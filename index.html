@@ -1,0 +1,3861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🐴 马年刮刮乐抽奖系统 - 20元1次 10次必中鞋</title>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // 确保Supabase SDK加载完成
+        window.createClient = window.supabase.createClient;
+    </script>
+    <!-- 腾讯云COS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/cos-js-sdk-v5@1.4.14/dist/cos-js-sdk-v5.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "微软雅黑", sans-serif; background: linear-gradient(135deg, #fef6e7 0%, #fff9e8 100%); color: #333; }
+        
+        /* 马年背景元素 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(217, 33, 33, 0.1) 0%, transparent 20%),
+                radial-gradient(circle at 90% 30%, rgba(255, 209, 102, 0.1) 0%, transparent 20%),
+                radial-gradient(circle at 50% 80%, rgba(217, 33, 33, 0.1) 0%, transparent 20%);
+            z-index: -1;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 20px auto;
+            padding: 30px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 马年装饰元素 */
+        .container::before {
+            content: '🐴';
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            font-size: 80px;
+            opacity: 0.1;
+            z-index: 0;
+        }
+        
+        .container::after {
+            content: '🎊';
+            position: absolute;
+            bottom: -20px;
+            left: -20px;
+            font-size: 80px;
+            opacity: 0.1;
+            z-index: 0;
+        }
+        
+        /* 内容层 */
+        .container > * {
+            position: relative;
+            z-index: 1;
+        }
+        h1 {
+            text-align: center;
+            color: #d92121;
+            font-size: 32px;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(217, 33, 33, 0.1);
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 18px;
+        }
+        
+        .code-input {
+            width: 100%;
+            padding: 18px;
+            border: 3px solid #ffd166;
+            border-radius: 12px;
+            font-size: 18px;
+            margin-bottom: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: #fff9f0;
+        }
+        
+        .code-input:focus {
+            outline: none;
+            border-color: #d92121;
+            box-shadow: 0 0 15px rgba(217, 33, 33, 0.2);
+        }
+        
+        .code-input.error {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+        
+        .error-tip {
+            color: #dc3545;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 20px;
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        .error-tip.hidden {
+            display: none;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #d92121 0%, #b31212 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 20px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(217, 33, 33, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.6s ease;
+        }
+        
+        .btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn:hover {
+            background: linear-gradient(135deg, #b31212 0%, #990e0e 100%);
+            box-shadow: 0 6px 20px rgba(217, 33, 33, 0.4);
+            transform: translateY(-2px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-admin {
+            width: 31%;
+            padding: 14px;
+            font-size: 16px;
+            margin: 5px 1%;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+        
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        }
+        
+        .btn-info:hover {
+            background: linear-gradient(135deg, #138496 0%, #0f6674 100%);
+        }
+        
+        .user-actions {
+            margin: 15px 0;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            height: auto;
+            width: auto;
+        }
+        
+        .user-prize-list div {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: white;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .user-prize-list div:last-child {
+            margin-bottom: 0;
+        }
+        
+        /* 刮奖区 - 简化且稳定的版本 */
+        .scratch-container {
+            width: 100%;
+            height: 350px;
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+            margin: 25px 0;
+            touch-action: none;
+            border: 5px solid #ffd166;
+        }
+        
+        #scratchCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            z-index: 2;
+        }
+        
+        #scratchCanvas::before {
+            content: '刮开图层 好运就到';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            font-weight: bold;
+            color: #000000;
+            text-align: center;
+            white-space: nowrap;
+            z-index: 1;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
+        }
+        
+        #scratchResult {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: #000000;
+            text-align: center;
+            z-index: 1;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .count-container {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 2px dashed #ffd166;
+        }
+        
+        .count-tip {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .count-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #d92121;
+            text-shadow: 2px 2px 4px rgba(217, 33, 33, 0.1);
+        }
+        
+        /* 中奖记录 */
+        .record-container {
+            margin-top: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 2px dashed #ffd166;
+        }
+        
+        .record-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #d92121;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .record-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .record-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        /* 滚动播报 */
+        .scroll-ticker {
+            width: 100%;
+            height: 40px;
+            overflow: hidden;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 20px;
+            margin: 20px 0;
+            position: relative;
+        }
+        
+        .ticker-content {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            position: absolute;
+            white-space: nowrap;
+        }
+        
+        .ticker-item {
+            margin: 0 30px;
+            font-size: 14px;
+            color: #856404;
+            font-weight: bold;
+        }
+        
+        /* 规则区域 */
+        .rules {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 2px dashed #17a2b8;
+        }
+        
+        .rules h3 {
+            color: #17a2b8;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .rules ul {
+            list-style: none;
+            line-height: 1.6;
+        }
+        
+        .rules li {
+            margin-bottom: 10px;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .rules li::before {
+            content: '•';
+            color: #17a2b8;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        /* 管理员页面 */
+        .admin-page {
+            display: none;
+        }
+        
+        .admin-login {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .admin-login h3 {
+            color: #d92121;
+            margin-bottom: 30px;
+        }
+        
+        .admin-login input {
+            width: 80%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #ffd166;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .admin-main {
+            display: none;
+        }
+        
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px dashed #ffd166;
+        }
+        
+        .admin-title {
+            color: #d92121;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            text-align: center;
+            border: 2px dashed #17a2b8;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #17a2b8;
+        }
+        
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .search-container input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ffd166;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        
+        .user-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        
+        .user-card {
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: 2px solid #f8f9fa;
+        }
+        
+        .user-card h4 {
+            color: #d92121;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .user-card h4 span {
+            font-size: 14px;
+            font-weight: normal;
+            color: #28a745;
+        }
+        
+        .user-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .user-info div {
+            font-size: 14px;
+        }
+        
+        .user-info div span {
+            font-weight: bold;
+            color: #17a2b8;
+        }
+        
+        .prize-detail {
+            margin-top: 15px;
+        }
+        
+        .prize-detail h5 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .user-prize-list {
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        /* 提示模态框 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 80%;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: modalFadeIn 0.3s ease;
+        }
+        
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .modal h3 {
+            color: #d92121;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .modal p {
+            margin-bottom: 30px;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+        
+        .modal .btn {
+            width: 120px;
+            height: 40px;
+            background: #d92121;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .modal .btn:hover {
+            background: #c8102e;
+            transform: translateY(-2px);
+        }
+        
+        /* 隐藏类 */
+        .hidden {
+            display: none !important;
+        }
+        
+        /* 加载动画 */
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+        }
+        
+        /* 管理按钮 */
+        .admin-enter {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #d92121 0%, #b31212 100%);
+            color: white;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(217, 33, 33, 0.4);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .admin-enter:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(217, 33, 33, 0.5);
+        }
+        
+        /* 认证相关样式 */
+        .auth-form {
+            margin: 20px 0;
+        }
+        
+        .auth-form h3 {
+            text-align: center;
+            color: #d92121;
+            margin-bottom: 10px;
+        }
+        
+        .auth-tip {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .auth-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .auth-actions .btn {
+            flex: 1;
+        }
+        
+        .user-info-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        #currentUser {
+            font-weight: bold;
+            color: #17a2b8;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .subtitle {
+                font-size: 16px;
+            }
+            
+            .btn {
+                padding: 15px;
+                font-size: 18px;
+            }
+            
+            .scratch-container {
+                height: 250px;
+            }
+            
+            #scratchResult {
+                font-size: 24px;
+            }
+            
+            .count-number {
+                font-size: 28px;
+            }
+            
+            .admin-header {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+            
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .user-info {
+                grid-template-columns: 1fr;
+            }
+            
+            .search-container {
+                flex-direction: column;
+            }
+            
+            .auth-actions {
+                flex-direction: column;
+            }
+            
+            /* 验证码容器响应式调整 */
+            .auth-form div[style*="display: flex; gap: 10px; align-items: center;"] {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+            
+            .auth-form div[style*="display: flex; gap: 10px; align-items: center;"] .captcha-img {
+                width: 100%;
+                height: 50px;
+            }
+            
+            /* 管理员操作按钮响应式调整 */
+            #adminMain div[style*="display: flex; gap: 10px; margin-top: 20px;"] {
+                flex-wrap: wrap;
+            }
+            
+            #adminMain div[style*="display: flex; gap: 10px; margin-top: 20px;"] .btn {
+            flex: 1 1 calc(50% - 5px);
+            min-width: 120px;
+        }
+        }
+        
+        /* 中奖信息动画 */
+        @keyframes prizeAppear {
+            0% {
+                opacity: 0;
+                transform: scale(0.8) translateY(20px);
+            }
+            50% {
+                opacity: 0.8;
+                transform: scale(1.1) translateY(-5px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 登录/注册页面 -->
+    <div id="authPage" class="container">
+        <h1>🐴 马年刮刮乐抽奖</h1>
+        <p class="subtitle">20元1次 | 10次必中鞋 | 次次有奖 无空奖</p>
+        
+        <!-- 登录表单 -->
+        <div id="loginForm" class="auth-form">
+            <h3>用户登录</h3>
+            <p class="auth-tip">请使用您的微信号登录</p>
+            <input type="text" id="username" class="code-input" placeholder="请输入微信号">
+            <input type="password" id="password" class="code-input" placeholder="请输入密码">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="loginCaptcha" class="code-input" placeholder="请输入验证码" style="flex: 1;">
+                <div id="loginCaptchaImg" class="captcha-img" style="width: 100px; height: 40px; background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 6px;">点击刷新</div>
+            </div>
+            <div class="auth-actions">
+                <button id="userLoginBtn" class="btn">登录</button>
+                <button id="showRegisterBtn" class="btn btn-info">新用户注册</button>
+            </div>
+
+        </div>
+        
+        <!-- 注册表单 -->
+        <div id="registerForm" class="auth-form hidden">
+            <h3>用户注册</h3>
+            <p class="auth-tip">请使用您的微信号注册账号</p>
+            <input type="text" id="regUsername" class="code-input" placeholder="请输入微信号">
+            <input type="password" id="regPassword" class="code-input" placeholder="请设置密码">
+            <input type="password" id="regConfirmPassword" class="code-input" placeholder="请确认密码">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="regCaptcha" class="code-input" placeholder="请输入验证码" style="flex: 1;">
+                <div id="regCaptchaImg" class="captcha-img" style="width: 100px; height: 40px; background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; cursor: pointer; border-radius: 6px;">点击刷新</div>
+            </div>
+            <div class="auth-actions">
+                <button id="registerBtn" class="btn">注册</button>
+                <button id="showLoginBtn" class="btn btn-info">返回登录</button>
+            </div>
+        </div>
+        
+        <div id="authError" class="error-tip hidden"></div>
+    </div>
+    
+    <!-- 用户页面 -->
+    <div id="userPage" class="container hidden">
+        <h1>🐴 马年刮刮乐抽奖</h1>
+        <p class="subtitle">20元1次 | 10次必中鞋 | 次次有奖 无空奖</p>
+        
+        <!-- 用户信息 -->
+        <div class="user-info-bar">
+            <span id="currentUser">欢迎，用户</span>
+            <div style="display: flex; gap: 10px;">
+                <button id="notificationBtn" class="btn btn-sm btn-info">通知</button>
+                <button id="logoutBtn" class="btn btn-sm">退出登录</button>
+            </div>
+        </div>
+        
+        <!-- 滚动播报 -->
+        <div class="scroll-ticker">
+            <div id="tickerContent" class="ticker-content"></div>
+        </div>
+        
+        <!-- 兑换码输入 -->
+        <input type="text" id="exchangeCode" class="code-input" placeholder="请输入兑换码">
+        <div id="codeError" class="error-tip">兑换码无效</div>
+        <button id="bindCodeBtn" class="btn">绑定兑换码</button>
+        
+        <!-- 剩余次数 -->
+        <div id="countTip" class="count-container hidden">
+            <div class="count-tip">剩余抽奖次数</div>
+            <div class="count-number"><span id="leftCountSpan">0</span> 次</div>
+        </div>
+        
+        <!-- 刮奖区 -->
+        <div id="scratchContainer" class="scratch-container hidden">
+            <div id="scratchResult">滑动刮开<br>次次有奖</div>
+            <canvas id="scratchCanvas"></canvas>
+        </div>
+        
+        <!-- 中奖记录 -->
+        <div id="recordContainer" class="record-container hidden">
+            <div class="record-title">中奖记录</div>
+            <div id="recordList" class="record-list"></div>
+        </div>
+        
+        <!-- 活动规则 -->
+        <div class="rules">
+            <h3>活动规则</h3>
+            <ul>
+                <li>20元1次抽奖，兑换码由商家专属提供，非商家发放均为无效码</li>
+                <li>累计抽满10次，直接获得<strong>299元鞋子一双（款式可自选）</strong>，中途次次有奖无空奖</li>
+                <li>所有奖项均<strong>30日内有效</strong>，联系商家核销兑换</li>
+                <li>可多次绑定兑换码，次数累加，绑定设备不可转赠</li>
+                <li>每个兑换码只可使用一次，重复使用无效</li>
+                <li><strong>代金券每次下单只可使用一张</strong></li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- 管理员页面 -->
+    <div id="adminPage" class="container admin-page">
+        <!-- 登录 -->
+        <div id="adminLogin" class="admin-login">
+            <h3>管理员登录</h3>
+            <input type="password" id="adminPwd" placeholder="请输入管理员密码">
+            <div id="adminPwdErrorTip" class="error-tip">密码错误</div>
+            <button id="adminLoginBtn" class="btn">登录</button>
+        </div>
+        
+        <!-- 管理后台 -->
+        <div id="adminMain" class="admin-main">
+            <div class="admin-header">
+                <h2 class="admin-title">🐴 马年刮刮乐管理后台</h2>
+                <button id="backBtn" class="btn btn-info">返回用户页</button>
+            </div>
+            
+            <!-- 统计数据 -->
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-label">总用户数</div>
+                    <div id="totalUserNum" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">总抽奖次数</div>
+                    <div id="totalDrawNum" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">中鞋用户数</div>
+                    <div id="totalShoeUser" class="stat-value">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">已用兑换码</div>
+                    <div id="totalUsedCode" class="stat-value">0</div>
+                </div>
+            </div>
+            
+            <!-- 搜索 -->
+            <div class="search-container">
+                <input type="text" id="searchUserInput" placeholder="搜索用户或奖品">
+                <button id="searchBtn" class="btn">搜索</button>
+            </div>
+            
+            <!-- 用户列表 -->
+            <div id="userList" class="user-list">
+                <div class="loading">加载中...</div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button id="refreshDataBtn" class="btn btn-info">刷新数据</button>
+                <button id="clearAllDataBtn" class="btn btn-danger">清空数据</button>
+                <button id="exportBtn" class="btn">导出Excel</button>
+                <button id="codeManageBtn" class="btn btn-info">兑换码管理</button>
+                <button id="addPrizeBtn" class="btn btn-success">添加中奖记录</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 提示模态框 -->
+    <div id="tipModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">提示</h3>
+            <p id="modalContent">操作成功</p>
+            <button id="modalClose" class="btn">确定</button>
+        </div>
+    </div>
+    
+    <!-- 中奖概率配置模态框 -->
+    <div id="probabilityModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>中奖概率配置</h3>
+            <div style="margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; color: #666;">请调整各奖项的中奖概率（总和应接近100%）：</p>
+                <div id="probabilityForm" style="display: grid; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>8.8元现金红包</label>
+                        <input type="number" id="prob-cash88" min="0" max="100" step="1" value="10" style="width: 80px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                        <span>%</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>6.6元现金红包</label>
+                        <input type="number" id="prob-cash66" min="0" max="100" step="1" value="20" style="width: 80px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                        <span>%</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>20元代金券</label>
+                        <input type="number" id="prob-coupon20" min="0" max="100" step="1" value="30" style="width: 80px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                        <span>%</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>25元代金券</label>
+                        <input type="number" id="prob-coupon25" min="0" max="100" step="1" value="30" style="width: 80px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                        <span>%</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>价值299元鞋子</label>
+                        <input type="number" id="prob-shoe" min="0" max="100" step="1" value="10" style="width: 80px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                        <span>%</span>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-weight: bold;">总概率</label>
+                        <span id="totalProbability" style="font-weight: bold; color: #17a2b8;">100%</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="probabilityCancel" class="btn btn-info">取消</button>
+                <button id="probabilitySave" class="btn">保存配置</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 兑换码管理模态框 -->
+    <div id="codeManageModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>兑换码管理</h3>
+            <div style="margin-bottom: 20px;">
+                <h4 style="margin-bottom: 15px;">生成兑换码</h4>
+                <div style="display: grid; gap: 15px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>抽奖次数</label>
+                        <input type="number" id="codeDrawTimes" min="1" max="100" step="1" value="5" style="width: 120px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>生成数量</label>
+                        <input type="number" id="codeGenerateCount" min="1" max="100" step="1" value="1" style="width: 120px; padding: 8px; border: 2px solid #ffd166; border-radius: 6px;">
+                    </div>
+                </div>
+                <button id="generateCodeBtn" class="btn" style="width: 100%; margin-bottom: 20px;">生成兑换码</button>
+                
+                <h4 style="margin-bottom: 15px;">生成结果</h4>
+                <div id="codeResult" style="border: 2px solid #ffd166; border-radius: 8px; padding: 15px; min-height: 100px; background-color: #fffbeb; font-family: monospace; white-space: pre-wrap;">
+                    生成的兑换码将显示在这里...
+                </div>
+                <button id="copyCodesBtn" class="btn btn-info" style="width: 100%; margin-top: 10px;">复制兑换码</button>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="codeManageCancel" class="btn btn-info">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 密码重置模态框 -->
+    <div id="resetPasswordModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <h3>重置密码</h3>
+            <div style="margin-bottom: 20px;">
+                <p style="margin-bottom: 15px; color: #666;">请输入您的微信号和新密码：</p>
+                <div style="display: grid; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">微信号</label>
+                        <input type="text" id="resetUsername" class="code-input" placeholder="请输入微信号">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">新密码</label>
+                        <input type="password" id="resetPassword" class="code-input" placeholder="请设置新密码">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">确认新密码</label>
+                        <input type="password" id="resetConfirmPassword" class="code-input" placeholder="请确认新密码">
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="resetPasswordCancel" class="btn btn-info">取消</button>
+                <button id="resetPasswordSubmit" class="btn">重置密码</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 通知中心模态框 -->
+    <div id="notificationModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>通知中心</h3>
+            <div id="notificationList" style="margin-bottom: 20px; max-height: 400px; overflow-y: auto;">
+                <div class="loading">加载通知中...</div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="notificationMarkAllRead" class="btn btn-info">标记全部已读</button>
+                <button id="notificationClose" class="btn">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 添加中奖记录模态框 -->
+    <div id="addPrizeModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>添加中奖记录</h3>
+            <div style="margin-bottom: 20px;">
+                <div style="display: grid; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">用户名</label>
+                        <input type="text" id="addPrizeUsername" class="code-input" placeholder="请输入用户名">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">奖品</label>
+                        <select id="addPrizeType" class="code-input" style="height: 50px;">
+                            <option value="8.8元现金红包">8.8元现金红包</option>
+                            <option value="6.6元现金红包">6.6元现金红包</option>
+                            <option value="20元代金券">20元代金券</option>
+                            <option value="25元代金券">25元代金券</option>
+                            <option value="价值299元鞋子款式自选">价值299元鞋子款式自选</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">时间</label>
+                        <input type="datetime-local" id="addPrizeTime" class="code-input">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px;">核验状态</label>
+                        <select id="addPrizeVerified" class="code-input" style="height: 50px;">
+                            <option value="false">未核验</option>
+                            <option value="true">已核验</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="addPrizeCancel" class="btn btn-info">取消</button>
+                <button id="addPrizeSubmit" class="btn">添加</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 加载状态 -->
+    <div id="loadingOverlay" class="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; visibility: hidden; opacity: 0; transition: visibility 0s, opacity 0.3s ease;">
+        <div class="loading-content" style="background-color: white; padding: 30px; border-radius: 10px; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <div class="loading-spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #ffd166; border-radius: 50%; width: 40px; height: 40px; margin: 0 auto 20px; animation: spin 1s linear infinite;"></div>
+            <p id="loadingText" style="margin: 0; color: #333;">加载中...</p>
+        </div>
+        <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
+    </div>
+    
+    <!-- 管理员入口 -->
+    <button id="adminEnter" class="admin-enter">管理</button>
+    
+    <script>
+        // 等待DOM加载完成后执行所有代码
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM加载完成，开始执行脚本');
+            
+            // 常量定义
+            const CODE_PASSWORD = 'mqpz';
+            const MUST_WIN_TIMES = 10;
+            const ADMIN_PWD = '@Lei20060610';
+        
+        // 启用腾讯云COS实现跨设备数据共享
+        window.cos = null;
+        try {
+            // 初始化腾讯云COS客户端
+            console.log('开始初始化腾讯云COS');
+            // 这里使用腾讯云COS的JavaScript SDK
+            // 实际使用时需要替换为真实的配置
+            window.cosConfig = {
+                Bucket: 'laide446-1403757360',
+                Region: 'ap-chengdu',
+                SecretId: 'AKIDtfFh1CHDL0Y4Qkw53qU5f4HH3d1CAub5',
+                SecretKey: 'LSn2AJTUKRUakjW7WpEmGoP9pCzmRyMY'
+            };
+            console.log('腾讯云COS配置已设置');
+            console.log('系统将使用腾讯云COS实现跨设备数据共享');
+            
+            // 从腾讯云COS加载所有数据将在init函数中调用
+        } catch (error) {
+            console.error('初始化腾讯云COS失败:', error);
+            console.log('腾讯云COS初始化失败，系统将无法正常运行');
+        }
+        
+        // 奖品配置
+        const PRIZES = {
+            cash88: '8.8元现金红包',
+            cash66: '6.6元现金红包',
+            coupon20: '20元代金券',
+            coupon25: '25元代金券',
+            shoe: '价值299元鞋子款式自选'
+        };
+        
+        // 奖品概率配置（默认值）
+        let PRIZE_PROBABILITIES = {
+            cash88: 10,    // 10%
+            cash66: 20,    // 20%
+            coupon20: 30,  // 30%
+            coupon25: 30,  // 30%
+            shoe: 10       // 10%（实际会根据MUST_WIN_TIMES逻辑调整）
+        };
+        
+        // 加载概率配置
+        function loadProbabilityConfig() {
+            const storedConfig = localStorage.getItem('draw_prize_probabilities');
+            if (storedConfig) {
+                try {
+                    PRIZE_PROBABILITIES = JSON.parse(storedConfig);
+                    console.log('加载概率配置:', PRIZE_PROBABILITIES);
+                } catch (error) {
+                    console.error('加载概率配置失败:', error);
+                }
+            }
+        }
+        
+        // 保存概率配置
+        function saveProbabilityConfig() {
+            localStorage.setItem('draw_prize_probabilities', JSON.stringify(PRIZE_PROBABILITIES));
+            console.log('保存概率配置:', PRIZE_PROBABILITIES);
+        }
+        
+        // 更新概率配置模态框中的值
+        function updateProbabilityModal() {
+            document.getElementById('prob-cash88').value = PRIZE_PROBABILITIES.cash88;
+            document.getElementById('prob-cash66').value = PRIZE_PROBABILITIES.cash66;
+            document.getElementById('prob-coupon20').value = PRIZE_PROBABILITIES.coupon20;
+            document.getElementById('prob-coupon25').value = PRIZE_PROBABILITIES.coupon25;
+            document.getElementById('prob-shoe').value = PRIZE_PROBABILITIES.shoe;
+            calculateTotalProbability();
+        }
+        
+        // 计算总概率
+        function calculateTotalProbability() {
+            const cash88 = parseInt(document.getElementById('prob-cash88').value) || 0;
+            const cash66 = parseInt(document.getElementById('prob-cash66').value) || 0;
+            const coupon20 = parseInt(document.getElementById('prob-coupon20').value) || 0;
+            const coupon25 = parseInt(document.getElementById('prob-coupon25').value) || 0;
+            const shoe = parseInt(document.getElementById('prob-shoe').value) || 0;
+            
+            const total = cash88 + cash66 + coupon20 + coupon25 + shoe;
+            const totalProbability = document.getElementById('totalProbability');
+            if (totalProbability) {
+                totalProbability.textContent = `${total}%`;
+                // 根据总概率值改变颜色
+                if (total === 100) {
+                    totalProbability.style.color = '#28a745';
+                } else if (total > 95 && total < 105) {
+                    totalProbability.style.color = '#ffc107';
+                } else {
+                    totalProbability.style.color = '#dc3545';
+                }
+            }
+        }
+        
+        // 初始化概率配置事件
+        function initProbabilityConfig() {
+            // 打开概率配置模态框
+            const probabilityBtn = document.getElementById('probabilityBtn');
+            if (probabilityBtn) {
+                probabilityBtn.addEventListener('click', function() {
+                    updateProbabilityModal();
+                    const probabilityModal = document.getElementById('probabilityModal');
+                    if (probabilityModal) {
+                        probabilityModal.classList.add('show');
+                    }
+                });
+            }
+            
+            // 关闭概率配置模态框
+            const probabilityCancel = document.getElementById('probabilityCancel');
+            if (probabilityCancel) {
+                probabilityCancel.addEventListener('click', function() {
+                    const probabilityModal = document.getElementById('probabilityModal');
+                    if (probabilityModal) {
+                        probabilityModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            // 保存概率配置
+            const probabilitySave = document.getElementById('probabilitySave');
+            if (probabilitySave) {
+                probabilitySave.addEventListener('click', function() {
+                    const cash88 = parseInt(document.getElementById('prob-cash88').value) || 0;
+                    const cash66 = parseInt(document.getElementById('prob-cash66').value) || 0;
+                    const coupon20 = parseInt(document.getElementById('prob-coupon20').value) || 0;
+                    const coupon25 = parseInt(document.getElementById('prob-coupon25').value) || 0;
+                    const shoe = parseInt(document.getElementById('prob-shoe').value) || 0;
+                    
+                    PRIZE_PROBABILITIES = {
+                        cash88: cash88,
+                        cash66: cash66,
+                        coupon20: coupon20,
+                        coupon25: coupon25,
+                        shoe: shoe
+                    };
+                    
+                    saveProbabilityConfig();
+                    
+                    const probabilityModal = document.getElementById('probabilityModal');
+                    if (probabilityModal) {
+                        probabilityModal.classList.remove('show');
+                    }
+                    
+                    showTipModal('保存成功', '✅ 中奖概率配置已保存！');
+                });
+            }
+        }
+        
+        // XSS防护：转义HTML特殊字符
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 生成CSRF令牌
+        function generateCsrfToken() {
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+        
+        // 初始化CSRF令牌
+        function initCsrfToken() {
+            if (!localStorage.getItem('csrfToken')) {
+                localStorage.setItem('csrfToken', generateCsrfToken());
+            }
+        }
+        
+        // 验证CSRF令牌
+        function validateCsrfToken(token) {
+            return token === localStorage.getItem('csrfToken');
+        }
+        
+        // 显示加载状态
+        function showLoading(text = '加载中...') {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            if (loadingOverlay) {
+                if (loadingText) {
+                    loadingText.textContent = text;
+                }
+                loadingOverlay.style.visibility = 'visible';
+                loadingOverlay.style.opacity = '1';
+            }
+        }
+        
+        // 隐藏加载状态
+        function hideLoading() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.visibility = 'hidden';
+                loadingOverlay.style.opacity = '0';
+            }
+        }
+        
+        // 显示提示模态框
+        function showTipModal(title, content) {
+            const modalTitle = document.getElementById('modalTitle');
+            const modalContent = document.getElementById('modalContent');
+            const tipModal = document.getElementById('tipModal');
+            if (modalTitle) {
+                modalTitle.textContent = title;
+            }
+            if (modalContent) {
+                modalContent.textContent = content;
+            }
+            if (tipModal) {
+                tipModal.classList.add('show');
+            }
+        }
+        
+        // 添加通知
+        function addNotification(message, type = 'info') {
+            console.log('添加通知:', message, type);
+            
+            // 创建通知对象
+            const notification = {
+                id: Date.now(),
+                message: message,
+                type: type,
+                time: new Date().toLocaleString(),
+                read: false
+            };
+            
+            // 加载现有通知
+            let notifications = [];
+            try {
+                const stored = localStorage.getItem('lottery_notifications');
+                if (stored) {
+                    notifications = JSON.parse(stored);
+                }
+            } catch (error) {
+                console.error('加载通知失败:', error);
+                notifications = [];
+            }
+            
+            // 添加新通知到开头
+            notifications.unshift(notification);
+            
+            // 限制通知数量
+            if (notifications.length > 20) {
+                notifications = notifications.slice(0, 20);
+            }
+            
+            // 保存通知
+            localStorage.setItem('lottery_notifications', JSON.stringify(notifications));
+            
+            // 显示通知提示
+            showNotificationBadge();
+        }
+        
+        // 显示通知徽章
+        function showNotificationBadge() {
+            // 这里可以实现通知徽章的显示逻辑
+            console.log('通知已添加，可在通知中心查看');
+        }
+        
+        // 获取未读通知
+        function getUnreadNotifications() {
+            try {
+                const stored = localStorage.getItem('lottery_notifications');
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    return notifications.filter(n => !n.read);
+                }
+            } catch (error) {
+                console.error('获取未读通知失败:', error);
+            }
+            return [];
+        }
+        
+        // 标记通知为已读
+        function markNotificationAsRead(notificationId) {
+            try {
+                const stored = localStorage.getItem('lottery_notifications');
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    const updated = notifications.map(n => {
+                        if (n.id === notificationId) {
+                            return { ...n, read: true };
+                        }
+                        return n;
+                    });
+                    localStorage.setItem('lottery_notifications', JSON.stringify(updated));
+                }
+            } catch (error) {
+                console.error('标记通知为已读失败:', error);
+            }
+        }
+        
+        // 标记全部通知为已读
+        function markAllNotificationsAsRead() {
+            try {
+                const stored = localStorage.getItem('lottery_notifications');
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    const updated = notifications.map(n => ({
+                        ...n,
+                        read: true
+                    }));
+                    localStorage.setItem('lottery_notifications', JSON.stringify(updated));
+                }
+            } catch (error) {
+                console.error('标记全部通知为已读失败:', error);
+            }
+        }
+        
+        // 显示通知中心
+        function showNotificationCenter() {
+            console.log('显示通知中心');
+            
+            // 加载通知
+            let notifications = [];
+            try {
+                const stored = localStorage.getItem('lottery_notifications');
+                if (stored) {
+                    notifications = JSON.parse(stored);
+                }
+            } catch (error) {
+                console.error('加载通知失败:', error);
+                notifications = [];
+            }
+            
+            // 显示通知
+            if (notificationList) {
+                if (notifications.length === 0) {
+                    notificationList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无通知</div>';
+                } else {
+                    notificationList.innerHTML = notifications.map(notification => {
+                        const typeClass = {
+                            'info': 'info',
+                            'prize': 'success',
+                            'warning': 'warning',
+                            'error': 'danger'
+                        }[notification.type] || 'info';
+                        
+                        return `
+                            <div style="padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: ${notification.read ? '#f8f9fa' : '#e3f2fd'};">
+                                <div style="font-weight: ${notification.read ? 'normal' : 'bold'}; margin-bottom: 5px;">${notification.message}</div>
+                                <div style="font-size: 12px; color: #666; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>${notification.time}</span>
+                                    ${!notification.read ? `<button onclick="markNotificationAsRead(${notification.id}); showNotificationCenter();" style="background-color: #17a2b8; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">标记已读</button>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            // 显示通知模态框
+            if (notificationModal) {
+                notificationModal.classList.add('show');
+            }
+        }
+        
+        // 存储键名
+        const STORAGE_KEYS = {
+            users: 'lottery_users',
+            currentUser: 'lottery_currentUser',
+            leftCount: 'lottery_leftCount',
+            userDrawCount: 'lottery_userDrawCount',
+            recordList: 'lottery_recordList',
+            usedCodes: 'lottery_usedCodes',
+            globalUserData: 'lottery_globalUserData',
+            notification: 'lottery_notification',
+            userPrizePools: 'lottery_userPrizePools'
+        };
+        
+        // 变量定义
+        let currentUser = '';
+        let leftCount = 0;
+        let userDrawCount = 0;
+        let recordList = [];
+        let users = {};
+        let usedCodes = [];
+        let globalUserData = {};
+        let exchangeCodesData = {}; // 存储所有生成的兑换码及其状态
+        let userPrizePools = {};
+        let userCode = '';
+        
+        // 全局验证码变量
+        let loginCaptchaValue = '';
+        let regCaptchaValue = '';
+        
+        // 页面元素
+        let authPage, userPage, adminPage;
+        let loginForm, registerForm, adminLogin, adminMain;
+        let username, password, regUsername, regPassword, regConfirmPassword, adminPwd;
+        let userLoginBtn, registerBtn, adminLoginBtn, showRegisterBtn, showLoginBtn;
+        let bindCodeBtn, exchangeCode, codeError;
+        let scratchCanvas, scratchResult, scratchContainer;
+        let leftCountSpan, countTip;
+        let recordListEl, recordContainer;
+        let adminEnter, backBtn;
+        let modalTitle, modalContent, tipModal, modalClose;
+        let adminPwdErrorTip, authError;
+        let userList, totalUserNum, totalDrawNum, totalShoeUser, totalUsedCode;
+        let searchUserInput, searchBtn;
+        let refreshDataBtn, clearAllDataBtn, exportBtn, addPrizeBtn;
+        let probabilityBtn, probabilityModal, probabilityCancel, probabilitySave, totalProbability;
+        let codeManageBtn, codeManageModal, codeManageCancel, generateCodeBtn, codeResult, copyCodesBtn, codeDrawTimes, codeGenerateCount;
+        let forgotPasswordBtn, resetPasswordModal, resetPasswordCancel, resetPasswordSubmit, resetUsername, resetPassword, resetConfirmPassword;
+        let loadingOverlay, loadingText;
+        let tickerContent;
+        let currentUserEl, logoutBtn, notificationBtn;
+        let loginCaptcha, loginCaptchaImg, regCaptcha, regCaptchaImg;
+        let notificationModal, notificationList, notificationMarkAllRead, notificationClose;
+        
+        // 获取DOM元素
+        function getDOMElements() {
+            console.log('开始获取DOM元素...');
+            
+            // 页面容器
+            authPage = document.getElementById('authPage');
+            userPage = document.getElementById('userPage');
+            adminPage = document.getElementById('adminPage');
+            console.log('页面容器:', { authPage, userPage, adminPage });
+            
+            // 表单元素
+            loginForm = document.getElementById('loginForm');
+            registerForm = document.getElementById('registerForm');
+            adminLogin = document.getElementById('adminLogin');
+            adminMain = document.getElementById('adminMain');
+            console.log('表单元素:', { loginForm, registerForm, adminLogin, adminMain });
+            
+            // 输入框
+            username = document.getElementById('username');
+            password = document.getElementById('password');
+            regUsername = document.getElementById('regUsername');
+            regPassword = document.getElementById('regPassword');
+            regConfirmPassword = document.getElementById('regConfirmPassword');
+            adminPwd = document.getElementById('adminPwd');
+            exchangeCode = document.getElementById('exchangeCode');
+            searchUserInput = document.getElementById('searchUserInput');
+            codeDrawTimes = document.getElementById('codeDrawTimes');
+            codeGenerateCount = document.getElementById('codeGenerateCount');
+            resetUsername = document.getElementById('resetUsername');
+            resetPassword = document.getElementById('resetPassword');
+            resetConfirmPassword = document.getElementById('resetConfirmPassword');
+            loginCaptcha = document.getElementById('loginCaptcha');
+            regCaptcha = document.getElementById('regCaptcha');
+            console.log('输入框:', { username, password, regUsername, regPassword, regConfirmPassword, adminPwd });
+            
+            // 验证码图片
+            loginCaptchaImg = document.getElementById('loginCaptchaImg');
+            regCaptchaImg = document.getElementById('regCaptchaImg');
+            console.log('验证码图片:', { loginCaptchaImg, regCaptchaImg });
+            
+            // 按钮
+            userLoginBtn = document.getElementById('userLoginBtn');
+            registerBtn = document.getElementById('registerBtn');
+            adminLoginBtn = document.getElementById('adminLoginBtn');
+            showRegisterBtn = document.getElementById('showRegisterBtn');
+            showLoginBtn = document.getElementById('showLoginBtn');
+            bindCodeBtn = document.getElementById('bindCodeBtn');
+            adminEnter = document.getElementById('adminEnter');
+            backBtn = document.getElementById('backBtn');
+            modalClose = document.getElementById('modalClose');
+            searchBtn = document.getElementById('searchBtn');
+            refreshDataBtn = document.getElementById('refreshDataBtn');
+            clearAllDataBtn = document.getElementById('clearAllDataBtn');
+            exportBtn = document.getElementById('exportBtn');
+            addPrizeBtn = document.getElementById('addPrizeBtn');
+            probabilityBtn = document.getElementById('probabilityBtn');
+            probabilityCancel = document.getElementById('probabilityCancel');
+            probabilitySave = document.getElementById('probabilitySave');
+            codeManageBtn = document.getElementById('codeManageBtn');
+            codeManageCancel = document.getElementById('codeManageCancel');
+            generateCodeBtn = document.getElementById('generateCodeBtn');
+            copyCodesBtn = document.getElementById('copyCodesBtn');
+            forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+            resetPasswordCancel = document.getElementById('resetPasswordCancel');
+            resetPasswordSubmit = document.getElementById('resetPasswordSubmit');
+            logoutBtn = document.getElementById('logoutBtn');
+            notificationBtn = document.getElementById('notificationBtn');
+            notificationMarkAllRead = document.getElementById('notificationMarkAllRead');
+            notificationClose = document.getElementById('notificationClose');
+            console.log('按钮:', { userLoginBtn, registerBtn, adminLoginBtn, showRegisterBtn, showLoginBtn, bindCodeBtn, adminEnter, notificationBtn });
+            
+            // 其他元素
+            codeError = document.getElementById('codeError');
+            scratchCanvas = document.getElementById('scratchCanvas');
+            scratchResult = document.getElementById('scratchResult');
+            scratchContainer = document.getElementById('scratchContainer');
+            leftCountSpan = document.getElementById('leftCountSpan');
+            countTip = document.getElementById('countTip');
+            recordListEl = document.getElementById('recordList');
+            recordContainer = document.getElementById('recordContainer');
+            modalTitle = document.getElementById('modalTitle');
+            modalContent = document.getElementById('modalContent');
+            tipModal = document.getElementById('tipModal');
+            adminPwdErrorTip = document.getElementById('adminPwdErrorTip');
+            authError = document.getElementById('authError');
+            userList = document.getElementById('userList');
+            totalUserNum = document.getElementById('totalUserNum');
+            totalDrawNum = document.getElementById('totalDrawNum');
+            totalShoeUser = document.getElementById('totalShoeUser');
+            totalUsedCode = document.getElementById('totalUsedCode');
+            probabilityModal = document.getElementById('probabilityModal');
+            totalProbability = document.getElementById('totalProbability');
+            codeManageModal = document.getElementById('codeManageModal');
+            codeResult = document.getElementById('codeResult');
+            resetPasswordModal = document.getElementById('resetPasswordModal');
+            loadingOverlay = document.getElementById('loadingOverlay');
+            loadingText = document.getElementById('loadingText');
+            tickerContent = document.getElementById('tickerContent');
+            currentUserEl = document.getElementById('currentUser');
+            notificationModal = document.getElementById('notificationModal');
+            notificationList = document.getElementById('notificationList');
+            console.log('其他元素:', { scratchCanvas, scratchResult, scratchContainer, adminEnter, notificationModal });
+            
+            // 添加回车键事件监听器
+            console.log('开始添加回车键事件监听器...');
+            
+            // 登录页面输入框
+            if (username) {
+                username.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') userLoginBtn.click();
+                });
+            }
+            if (password) {
+                password.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') userLoginBtn.click();
+                });
+            }
+            if (loginCaptcha) {
+                loginCaptcha.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') userLoginBtn.click();
+                });
+            }
+            
+            // 注册页面输入框
+            if (regUsername) {
+                regUsername.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') registerBtn.click();
+                });
+            }
+            if (regPassword) {
+                regPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') registerBtn.click();
+                });
+            }
+            if (regConfirmPassword) {
+                regConfirmPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') registerBtn.click();
+                });
+            }
+            if (regCaptcha) {
+                regCaptcha.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') registerBtn.click();
+                });
+            }
+            
+            // 兑换码输入框
+            if (exchangeCode) {
+                exchangeCode.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') bindCodeBtn.click();
+                });
+            }
+            
+            // 管理员登录密码输入框
+            if (adminPwd) {
+                adminPwd.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') adminLoginBtn.click();
+                });
+            }
+            
+            // 搜索输入框
+            if (searchUserInput) {
+                searchUserInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') searchBtn.click();
+                });
+            }
+            
+            // 密码重置页面输入框
+            if (resetUsername) {
+                resetUsername.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        // 尝试获取重置密码按钮并点击
+                        const resetPasswordSubmit = document.getElementById('resetPasswordSubmit');
+                        if (resetPasswordSubmit) resetPasswordSubmit.click();
+                    }
+                });
+            }
+            if (resetPassword) {
+                resetPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        const resetPasswordSubmit = document.getElementById('resetPasswordSubmit');
+                        if (resetPasswordSubmit) resetPasswordSubmit.click();
+                    }
+                });
+            }
+            if (resetConfirmPassword) {
+                resetConfirmPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        const resetPasswordSubmit = document.getElementById('resetPasswordSubmit');
+                        if (resetPasswordSubmit) resetPasswordSubmit.click();
+                    }
+                });
+            }
+            
+            console.log('回车键事件监听器添加完成！');
+            console.log('DOM元素获取完成！');
+        }
+        
+        // 初始化验证码
+        function initCaptcha() {
+            console.log('开始初始化验证码...');
+            
+            // 生成随机验证码
+            function generateCaptcha() {
+                const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                let captcha = '';
+                for (let i = 0; i < 4; i++) {
+                    captcha += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return captcha;
+            }
+            
+            // 绘制验证码
+            function drawCaptcha(element, captcha) {
+                if (!element) return;
+                
+                // 清除原有内容
+                element.innerHTML = '';
+                
+                // 设置随机背景色
+                const bgColors = ['#f0f9ff', '#f0fdf4', '#fefce8', '#fef2f2', '#fdf4ff'];
+                const bgColor = bgColors[Math.floor(Math.random() * bgColors.length)];
+                element.style.backgroundColor = bgColor;
+                
+                // 绘制验证码字符
+                for (let i = 0; i < captcha.length; i++) {
+                    const span = document.createElement('span');
+                    span.textContent = captcha[i];
+                    
+                    // 设置随机样式
+                    const rotation = (Math.random() - 0.5) * 30; // -15到15度的旋转
+                    const fontSize = 16 + Math.random() * 6; // 16-22px的字体大小
+                    const colors = ['#1e40af', '#047857', '#92400e', '#991b1b', '#7e22ce'];
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    
+                    span.style.transform = `rotate(${rotation}deg)`;
+                    span.style.fontSize = `${fontSize}px`;
+                    span.style.color = color;
+                    span.style.margin = '0 2px';
+                    
+                    element.appendChild(span);
+                }
+            }
+            
+            // 登录验证码
+            if (loginCaptchaImg) {
+                console.log('初始化登录验证码...');
+                loginCaptchaValue = generateCaptcha();
+                drawCaptcha(loginCaptchaImg, loginCaptchaValue);
+                
+                loginCaptchaImg.addEventListener('click', function() {
+                    loginCaptchaValue = generateCaptcha();
+                    drawCaptcha(loginCaptchaImg, loginCaptchaValue);
+                });
+                
+                // 验证登录验证码
+                window.validateLoginCaptcha = function() {
+                    const loginCaptcha = document.getElementById('loginCaptcha');
+                    return loginCaptcha.value.toUpperCase() === loginCaptchaValue;
+                };
+            }
+            
+            // 注册验证码
+            if (regCaptchaImg) {
+                console.log('初始化注册验证码...');
+                regCaptchaValue = generateCaptcha();
+                drawCaptcha(regCaptchaImg, regCaptchaValue);
+                
+                regCaptchaImg.addEventListener('click', function() {
+                    regCaptchaValue = generateCaptcha();
+                    drawCaptcha(regCaptchaImg, regCaptchaValue);
+                });
+                
+                // 验证注册验证码
+                window.validateRegCaptcha = function() {
+                    const regCaptcha = document.getElementById('regCaptcha');
+                    return regCaptcha.value.toUpperCase() === regCaptchaValue;
+                };
+            }
+            
+            console.log('验证码初始化完成！');
+        }
+        
+        // 初始化密码重置
+        function initPasswordReset() {
+            console.log('开始初始化密码重置...');
+            
+            const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+            if (forgotPasswordBtn) {
+                forgotPasswordBtn.addEventListener('click', function() {
+                    const resetPasswordModal = document.getElementById('resetPasswordModal');
+                    if (resetPasswordModal) {
+                        resetPasswordModal.classList.add('show');
+                    }
+                });
+            }
+            
+            const resetPasswordCancel = document.getElementById('resetPasswordCancel');
+            if (resetPasswordCancel) {
+                resetPasswordCancel.addEventListener('click', function() {
+                    const resetPasswordModal = document.getElementById('resetPasswordModal');
+                    if (resetPasswordModal) {
+                        resetPasswordModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            const resetPasswordSubmit = document.getElementById('resetPasswordSubmit');
+            if (resetPasswordSubmit) {
+                resetPasswordSubmit.addEventListener('click', function() {
+                    const resetUsername = document.getElementById('resetUsername');
+                    const resetPassword = document.getElementById('resetPassword');
+                    const resetConfirmPassword = document.getElementById('resetConfirmPassword');
+                    
+                    const username = resetUsername.value.trim();
+                    const password = resetPassword.value;
+                    const confirmPassword = resetConfirmPassword.value;
+                    
+                    if (!username) {
+                        showTipModal('错误', '请输入微信号！');
+                        return;
+                    }
+                    
+                    if (!password) {
+                        showTipModal('错误', '请设置新密码！');
+                        return;
+                    }
+                    
+                    if (password !== confirmPassword) {
+                        showTipModal('错误', '两次输入的密码不一致！');
+                        return;
+                    }
+                    
+                    if (!users[username]) {
+                        showTipModal('错误', '该微信号未注册！');
+                        return;
+                    }
+                    
+                    // 重置密码
+                    users[username] = password;
+                    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
+                    
+                    // 保存到Supabase
+                    saveUsersToTencentCOS();
+                    
+                    showTipModal('成功', '密码重置成功！');
+                    
+                    const resetPasswordModal = document.getElementById('resetPasswordModal');
+                    if (resetPasswordModal) {
+                        resetPasswordModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            console.log('密码重置初始化完成！');
+        }
+        
+        // 初始化滚动播报
+        function initTicker() {
+            console.log('开始初始化滚动播报...');
+            
+            const tickerContent = document.getElementById('tickerContent');
+            if (tickerContent) {
+                // 奖项列表
+                const prizes = [
+                    '88.88元现金红包',
+                    '66.66元现金红包',
+                    '38.88元现金红包',
+                    '18.88元现金红包',
+                    '价值399元款鞋子（款式自选）',
+                    '价值299元款鞋子（款式自选）',
+                    '价值199元款鞋子（款式自选）'
+                ];
+                
+                // 生成随机四位数（模仿手机尾号）
+                function generateRandomTail() {
+                    return Math.floor(1000 + Math.random() * 9000);
+                }
+                
+                // 生成滚动播报内容
+                const tickerItems = [];
+                for (let i = 0; i < 10; i++) {
+                    const tailNumber = generateRandomTail();
+                    const prize = prizes[Math.floor(Math.random() * prizes.length)];
+                    const item = `🎉🎉恭喜用户${tailNumber}获得${prize}`;
+                    tickerItems.push(item);
+                }
+                
+                tickerItems.forEach(item => {
+                    const tickerItem = document.createElement('div');
+                    tickerItem.className = 'ticker-item';
+                    tickerItem.textContent = item;
+                    tickerContent.appendChild(tickerItem);
+                });
+                
+                // 优化滚动动画
+                let position = 0;
+                const speed = 0.5; // 调整滚动速度，值越小越流畅
+                
+                // 克隆内容以实现无缝滚动
+                const cloneContent = document.createElement('div');
+                cloneContent.className = 'ticker-content';
+                tickerItems.forEach(item => {
+                    const tickerItem = document.createElement('div');
+                    tickerItem.className = 'ticker-item';
+                    tickerItem.textContent = item;
+                    cloneContent.appendChild(tickerItem);
+                });
+                tickerContent.appendChild(cloneContent);
+                
+                function scrollTicker() {
+                    position -= speed;
+                    
+                    // 计算总宽度
+                    const totalWidth = tickerContent.offsetWidth / 2;
+                    
+                    // 当滚动到一半时重置位置，实现无缝滚动
+                    if (position < -totalWidth) {
+                        position = 0;
+                    }
+                    
+                    // 使用transform进行动画，利用GPU加速
+                    tickerContent.style.transform = `translateX(${position}px)`;
+                    tickerContent.style.willChange = 'transform'; // 告诉浏览器将要发生变化，提前优化
+                    
+                    requestAnimationFrame(scrollTicker);
+                }
+                
+                // 确保容器有足够的宽度
+                tickerContent.style.whiteSpace = 'nowrap';
+                tickerContent.style.display = 'flex';
+                tickerContent.style.alignItems = 'center';
+                
+                scrollTicker();
+            }
+            
+            console.log('滚动播报初始化完成！');
+        }
+        
+        // 初始化刮刮乐
+        function initScratch() {
+            console.log('开始初始化刮刮乐...');
+            
+            if (scratchCanvas) {
+                const canvas = scratchCanvas;
+                const ctx = canvas.getContext('2d');
+                
+                // 设置画布尺寸
+                function resizeCanvas() {
+                    // 确保容器可见时再设置尺寸
+                    if (!scratchContainer.classList.contains('hidden')) {
+                        canvas.width = canvas.offsetWidth;
+                        canvas.height = canvas.offsetHeight;
+                        ctx.fillStyle = '#ffbe0b';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        console.log('调整画布尺寸:', canvas.width, 'x', canvas.height);
+                    }
+                }
+                
+                // 初始调整尺寸
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                
+                let isScratching = false;
+                
+                // 刮擦效果
+                function scratch(x, y) {
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.beginPath();
+                    ctx.arc(x, y, 30, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                
+                // 鼠标事件
+                canvas.addEventListener('mousedown', function(e) {
+                    console.log('鼠标按下');
+                    isScratching = true;
+                    canvas.style.cursor = 'grabbing';
+                    const rect = canvas.getBoundingClientRect();
+                    scratch(e.clientX - rect.left, e.clientY - rect.top);
+                });
+                
+                canvas.addEventListener('mousemove', function(e) {
+                    if (isScratching) {
+                        const rect = canvas.getBoundingClientRect();
+                        scratch(e.clientX - rect.left, e.clientY - rect.top);
+                    }
+                });
+                
+                canvas.addEventListener('mouseup', function() {
+                    console.log('鼠标释放');
+                    isScratching = false;
+                    canvas.style.cursor = 'grab';
+                });
+                
+                canvas.addEventListener('mouseleave', function() {
+                    console.log('鼠标离开');
+                    isScratching = false;
+                    canvas.style.cursor = 'grab';
+                });
+                
+                // 触摸事件
+                canvas.addEventListener('touchstart', function(e) {
+                    console.log('触摸开始');
+                    isScratching = true;
+                    const rect = canvas.getBoundingClientRect();
+                    const touch = e.touches[0];
+                    scratch(touch.clientX - rect.left, touch.clientY - rect.top);
+                }, { passive: true });
+                
+                canvas.addEventListener('touchmove', function(e) {
+                    if (isScratching) {
+                        const rect = canvas.getBoundingClientRect();
+                        const touch = e.touches[0];
+                        scratch(touch.clientX - rect.left, touch.clientY - rect.top);
+                    }
+                }, { passive: true });
+                
+                canvas.addEventListener('touchend', function() {
+                    console.log('触摸结束');
+                    isScratching = false;
+                });
+                
+                // 设置默认光标
+                canvas.style.cursor = 'grab';
+                
+                // 添加悬停效果
+                canvas.addEventListener('mouseover', function() {
+                    if (!isScratching) {
+                        canvas.style.cursor = 'grab';
+                    }
+                });
+                
+                // 重置刮刮乐
+                window.resetScratch = function() {
+                    console.log('重置刮刮乐');
+                    resizeCanvas();
+                    // 重置中奖信息显示
+                    if (scratchResult) {
+                        scratchResult.innerHTML = '滑动刮开<br>次次有奖';
+                    }
+                };
+                
+                // 检测刮开面积
+                function checkScratchProgress() {
+                    const canvas = scratchCanvas;
+                    const ctx = canvas.getContext('2d');
+                    const width = canvas.width;
+                    const height = canvas.height;
+                    const imageData = ctx.getImageData(0, 0, width, height);
+                    const data = imageData.data;
+                    let clearPixels = 0;
+                    let totalPixels = width * height;
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (data[i + 3] === 0) {
+                            clearPixels++;
+                        }
+                    }
+                    
+                    return (clearPixels / totalPixels) * 100;
+                }
+                
+                // 刮开结束处理
+                function handleScratchComplete() {
+                    console.log('刮开完成，开始处理中奖逻辑');
+                    
+                    // 生成中奖结果
+                    const prize = getRandomPrize();
+                    console.log('中奖结果:', prize);
+                    
+                    // 显示中奖信息（添加入场动画）
+                    if (scratchResult) {
+                        scratchResult.innerHTML = `恭喜获得<br>${prize}`;
+                        scratchResult.style.animation = 'none';
+                        scratchResult.offsetHeight; // 触发重排
+                        scratchResult.style.animation = 'prizeAppear 0.8s ease-out forwards';
+                    }
+                    
+                    // 减少抽奖次数
+                    leftCount--;
+                    userDrawCount++;
+                    
+                    // 添加中奖记录
+                    const record = {
+                        prize: prize,
+                        time: new Date().toLocaleString(),
+                        verified: false
+                    };
+                    recordList.unshift(record);
+                    
+                    // 添加中奖通知
+                    addNotification(`🎉 恭喜中奖！您获得了：${prize}`, 'prize');
+                    
+                    // 保存数据
+                    saveUserData();
+                    
+                    // 延迟显示中奖弹窗，让用户先看到刮开结果
+                    setTimeout(() => {
+                        showTipModal('🎉 恭喜中奖', `您获得了：${prize}`);
+                    }, 500);
+                    
+                    // 更新页面显示
+                    updatePageDisplay();
+                }
+                
+                // 监听刮开事件，添加刮开完成检测
+                let scratchTimeout;
+                canvas.addEventListener('mouseup', function() {
+                    console.log('鼠标释放');
+                    isScratching = false;
+                    clearTimeout(scratchTimeout);
+                    scratchTimeout = setTimeout(() => {
+                        const progress = checkScratchProgress();
+                        console.log('刮开进度:', progress);
+                        if (progress > 30) {
+                            handleScratchComplete();
+                        }
+                    }, 500);
+                });
+                
+                canvas.addEventListener('touchend', function() {
+                    console.log('触摸结束');
+                    isScratching = false;
+                    clearTimeout(scratchTimeout);
+                    scratchTimeout = setTimeout(() => {
+                        const progress = checkScratchProgress();
+                        console.log('刮开进度:', progress);
+                        if (progress > 30) {
+                            handleScratchComplete();
+                        }
+                    }, 500);
+                });
+            }
+            
+            console.log('刮刮乐初始化完成！');
+        }
+        
+        // 初始化事件绑定
+        function bindEvents() {
+            console.log('开始初始化事件绑定...');
+            
+            // 登录按钮
+            if (userLoginBtn) {
+                console.log('绑定登录按钮事件...');
+                userLoginBtn.addEventListener('click', function() {
+                    const username = document.getElementById('username').value.trim();
+                    const password = document.getElementById('password').value;
+                    
+                    if (!username) {
+                        if (authError) {
+                            authError.textContent = '请输入微信号！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    if (!password) {
+                        if (authError) {
+                            authError.textContent = '请输入密码！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    // 验证验证码
+                    if (!window.validateLoginCaptcha()) {
+                        if (authError) {
+                            authError.textContent = '验证码错误！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    // 验证用户
+                    if (users[username] === password) {
+                        currentUser = username;
+                        
+                        if (authError) {
+                            authError.classList.add('hidden');
+                        }
+                        
+                        // 记录登录时间和IP地址
+                        const loginTime = new Date().toLocaleString();
+                        console.log('用户登录时间:', loginTime);
+                        
+                        // 加载用户数据并跳转到用户页面
+                        loadUserData();
+                        
+                        // 更新登录时间和IP地址
+                        if (globalUserData[username]) {
+                            globalUserData[username].lastLoginTime = loginTime;
+                            
+                            // 获取用户IP地址（添加详细错误处理）
+                            try {
+                                fetch('https://api.ipify.org?format=json')
+                                    .then(response => {
+                                        if (!response.ok) {
+                                            throw new Error('网络响应失败');
+                                        }
+                                        return response.json();
+                                    })
+                                    .then(data => {
+                                        const ipAddress = data.ip;
+                                        console.log('用户IP地址:', ipAddress);
+                                        globalUserData[username].lastLoginIP = ipAddress;
+                                    })
+                                    .catch(error => {
+                                        console.log('获取IP地址失败（非关键错误）:', error.message);
+                                    })
+                                    .finally(() => {
+                                        // 无论是否获取到IP地址，都保存数据
+                                        saveUsersToTencentCOS();
+                                    });
+                            } catch (error) {
+                                console.log('获取IP地址失败（非关键错误）:', error.message);
+                                saveUsersToTencentCOS();
+                            }
+                        }
+                        
+                        initPage();
+                        
+                        // 检查通知
+                        // 移除本地存储通知，改为直接显示提示
+                        console.log('用户登录成功');
+                        showTipModal('成功', '登录成功！');
+                    } else {
+                        if (authError) {
+                            authError.textContent = '微信号或密码错误！';
+                            authError.classList.remove('hidden');
+                        }
+                    }
+                });
+            }
+            
+            // 注册按钮
+            if (registerBtn) {
+                console.log('绑定注册按钮事件...');
+                registerBtn.addEventListener('click', function() {
+                    const username = document.getElementById('regUsername').value.trim();
+                    const password = document.getElementById('regPassword').value;
+                    const confirmPassword = document.getElementById('regConfirmPassword').value;
+                    
+                    if (!username) {
+                        if (authError) {
+                            authError.textContent = '请输入微信号！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    if (!password) {
+                        if (authError) {
+                            authError.textContent = '请设置密码！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    if (password !== confirmPassword) {
+                        if (authError) {
+                            authError.textContent = '两次输入的密码不一致！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    // 验证验证码
+                    if (!window.validateRegCaptcha()) {
+                        if (authError) {
+                            authError.textContent = '验证码错误！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    if (users[username]) {
+                        if (authError) {
+                            authError.textContent = '该微信号已注册！';
+                            authError.classList.remove('hidden');
+                        }
+                        return;
+                    }
+                    
+                    // 注册新用户
+                    users[username] = password;
+                    
+                    // 初始化用户数据
+                    if (!globalUserData[username]) {
+                        const registerTime = new Date().toLocaleString();
+                        globalUserData[username] = {
+                            leftCount: 0,
+                            recordList: [],
+                            userDrawCount: 0,
+                            prizePools: [],
+                            username: username,
+                            lastLoginTime: registerTime,
+                            registerTime: registerTime,
+                            usedCodes: []
+                        };
+                        
+                        // 获取用户IP地址（添加详细错误处理）
+                        try {
+                            fetch('https://api.ipify.org?format=json')
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error('网络响应失败');
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    const ipAddress = data.ip;
+                                    console.log('用户IP地址:', ipAddress);
+                                    globalUserData[username].lastLoginIP = ipAddress;
+                                    globalUserData[username].registerIP = ipAddress;
+                                })
+                                .catch(error => {
+                                    console.log('获取IP地址失败（非关键错误）:', error.message);
+                                })
+                                .finally(() => {
+                                    // 无论是否获取到IP地址，都保存数据
+                                    saveUsersToTencentCOS();
+                                });
+                        } catch (error) {
+                            console.log('获取IP地址失败（非关键错误）:', error.message);
+                            saveUsersToTencentCOS();
+                        }
+                    }
+                    
+                    if (authError) {
+                        authError.classList.add('hidden');
+                    }
+                    
+                    // 保存到腾讯云COS
+                    saveUsersToTencentCOS();
+                    
+                    showTipModal('成功', '注册成功！');
+                    
+                    // 切换到登录表单
+                    if (registerForm) registerForm.classList.add('hidden');
+                    if (loginForm) loginForm.classList.remove('hidden');
+                });
+            }
+            
+            // 显示注册表单
+            if (showRegisterBtn) {
+                console.log('绑定显示注册表单按钮事件...');
+                showRegisterBtn.addEventListener('click', function() {
+                    if (loginForm) loginForm.classList.add('hidden');
+                    if (registerForm) registerForm.classList.remove('hidden');
+                    if (authError) authError.classList.add('hidden');
+                });
+            }
+            
+            // 显示登录表单
+            if (showLoginBtn) {
+                console.log('绑定显示登录表单按钮事件...');
+                showLoginBtn.addEventListener('click', function() {
+                    if (registerForm) registerForm.classList.add('hidden');
+                    if (loginForm) loginForm.classList.remove('hidden');
+                    if (authError) authError.classList.add('hidden');
+                });
+            }
+            
+            // 绑定兑换码
+            if (bindCodeBtn) {
+                console.log('绑定兑换码按钮事件...');
+                bindCodeBtn.addEventListener('click', function() {
+                    const code = exchangeCode.value.trim();
+                    if (!code) {
+                        codeError.style.display = 'block';
+                        return;
+                    }
+                    
+                    // 验证兑换码（检查是否存在于exchangeCodesData中，是否已使用）
+                    if (exchangeCodesData[code] && !exchangeCodesData[code].used) {
+                        // 提取次数
+                        const times = exchangeCodesData[code].times || 1;
+                        
+                        // 增加抽奖次数
+                        leftCount += times;
+                        
+                        // 标记兑换码为已使用
+                        exchangeCodesData[code].used = true;
+                        exchangeCodesData[code].usedTime = new Date().toLocaleString();
+                        exchangeCodesData[code].usedBy = currentUser;
+                        
+                        // 标记兑换码为已使用（本地）
+                        if (!usedCodes.includes(code)) {
+                            usedCodes.push(code);
+                        }
+                        
+                        // 更新用户数据
+                        if (currentUser) {
+                            if (!globalUserData[currentUser]) {
+                                globalUserData[currentUser] = {
+                                    leftCount: 0,
+                                    recordList: [],
+                                    userDrawCount: 0,
+                                    prizePools: [],
+                                    usedCodes: [],
+                                    username: currentUser
+                                };
+                            }
+                            globalUserData[currentUser].leftCount = leftCount;
+                            // 将使用的兑换码添加到用户的usedCodes数组中
+                            if (!globalUserData[currentUser].usedCodes) {
+                                globalUserData[currentUser].usedCodes = [];
+                            }
+                            if (!globalUserData[currentUser].usedCodes.includes(code)) {
+                                globalUserData[currentUser].usedCodes.push(code);
+                            }
+                        }
+                        
+                        // 保存数据到腾讯云COS
+                        saveUsersToTencentCOS();
+                        
+                        codeError.style.display = 'none';
+                        showTipModal('成功', `兑换码绑定成功！获得 ${times} 次抽奖机会`);
+                        
+                        // 更新页面显示
+                        updatePageDisplay();
+                    } else {
+                        codeError.style.display = 'block';
+                    }
+                });
+            }
+            
+            // 退出登录
+            if (logoutBtn) {
+                console.log('绑定退出登录按钮事件...');
+                logoutBtn.addEventListener('click', function() {
+                    currentUser = '';
+                    localStorage.removeItem(STORAGE_KEYS.currentUser);
+                    initPage();
+                });
+            }
+            
+            // 通知按钮
+            if (notificationBtn) {
+                console.log('绑定通知按钮事件...');
+                notificationBtn.addEventListener('click', function() {
+                    console.log('点击通知按钮');
+                    showNotificationCenter();
+                });
+            }
+            
+            // 通知中心关闭按钮
+            if (notificationClose) {
+                console.log('绑定通知中心关闭按钮事件...');
+                notificationClose.addEventListener('click', function() {
+                    console.log('点击通知中心关闭按钮');
+                    if (notificationModal) {
+                        notificationModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            // 标记全部已读按钮
+            if (notificationMarkAllRead) {
+                console.log('绑定标记全部已读按钮事件...');
+                notificationMarkAllRead.addEventListener('click', function() {
+                    console.log('点击标记全部已读按钮');
+                    markAllNotificationsAsRead();
+                    showNotificationCenter();
+                });
+            }
+            
+            // 管理员入口
+            if (adminEnter) {
+                console.log('绑定管理员入口按钮事件...');
+                adminEnter.addEventListener('click', function() {
+                    console.log('点击管理员入口按钮');
+                    if (authPage) authPage.classList.add('hidden');
+                    if (userPage) userPage.classList.add('hidden');
+                    if (adminPage) {
+                        adminPage.style.display = 'block';
+                        console.log('显示管理员页面');
+                    }
+                });
+            }
+            
+            // 管理员登录
+            if (adminLoginBtn) {
+                console.log('绑定管理员登录按钮事件...');
+                adminLoginBtn.addEventListener('click', function() {
+                    console.log('点击管理员登录按钮');
+                    if (adminPwd.value === ADMIN_PWD) {
+                        console.log('管理员密码正确');
+                        if (adminLogin) adminLogin.style.display = 'none';
+                        if (adminMain) adminMain.style.display = 'block';
+                        
+                        // 直接从腾讯云COS加载最新数据，确保跨设备数据同步
+                        if (window.COS && window.cosConfig) {
+                            console.log('从腾讯云COS加载最新用户数据...');
+                            const cos = new COS({
+                                SecretId: window.cosConfig.SecretId,
+                                SecretKey: window.cosConfig.SecretKey,
+                                // 禁用SDK内部的健康检查，减少404错误
+                                ClientConfig: {
+                                    DisableHealthCheck: true
+                                }
+                            });
+                            
+                            // 加载users数据
+                            cos.getObject({
+                                Bucket: window.cosConfig.Bucket,
+                                Region: window.cosConfig.Region,
+                                Key: 'users.json'
+                            }, (err, data) => {
+                                if (err) {
+                                    console.log('腾讯云COS暂时不可用，初始化空数据');
+                                    users = {};
+                                } else {
+                                    try {
+                                        users = JSON.parse(data.Body.toString());
+                                        console.log('用户账号数据已从腾讯云COS加载');
+                                    } catch (e) {
+                                        console.log('解析用户账号数据失败，初始化空数据');
+                                        users = {};
+                                    }
+                                }
+                                
+                                // 加载globalUserData数据
+                                cos.getObject({
+                                    Bucket: window.cosConfig.Bucket,
+                                    Region: window.cosConfig.Region,
+                                    Key: 'globalUserData.json'
+                                }, (err, data) => {
+                                    if (err) {
+                                        console.log('腾讯云COS暂时不可用，初始化空数据');
+                                        globalUserData = {};
+                                    } else {
+                                        try {
+                                            globalUserData = JSON.parse(data.Body.toString());
+                                            console.log('用户详细数据已从腾讯云COS加载');
+                                        } catch (e) {
+                                            console.log('解析用户详细数据失败，初始化空数据');
+                                            globalUserData = {};
+                                        }
+                                    }
+                                    
+                                    // 渲染用户列表
+                                    renderAllUserRecord();
+                                });
+                            });
+                        } else {
+                            // 如果腾讯云COS不可用，初始化空数据
+                            console.log('腾讯云COS不可用，初始化空数据');
+                            users = {};
+                            globalUserData = {};
+                            renderAllUserRecord();
+                        }
+                        
+
+                    } else {
+                        console.log('管理员密码错误');
+                        if (adminPwdErrorTip) {
+                            adminPwdErrorTip.style.display = 'block';
+                        }
+                    }
+                });
+            }
+            
+            // 返回用户页
+            if (backBtn) {
+                console.log('绑定返回用户页按钮事件...');
+                backBtn.addEventListener('click', function() {
+                    if (adminPage) adminPage.style.display = 'none';
+                    initPage();
+                });
+            }
+            
+            // 关闭模态框
+            if (modalClose) {
+                console.log('绑定关闭模态框按钮事件...');
+                modalClose.addEventListener('click', function() {
+                    if (tipModal) {
+                        tipModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            // 刷新数据
+            if (refreshDataBtn) {
+                console.log('绑定刷新数据按钮事件...');
+                refreshDataBtn.addEventListener('click', function() {
+                    console.log('点击刷新数据按钮...');
+                    
+                    // 直接从腾讯云COS加载最新数据，确保跨设备数据同步
+                    if (window.COS && window.cosConfig) {
+                        console.log('从腾讯云COS加载最新用户数据...');
+                        const cos = new COS({
+                            SecretId: window.cosConfig.SecretId,
+                            SecretKey: window.cosConfig.SecretKey,
+                            // 禁用SDK内部的健康检查，减少404错误
+                            ClientConfig: {
+                                DisableHealthCheck: true
+                            }
+                        });
+                        
+                        // 加载users数据
+                        cos.getObject({
+                            Bucket: window.cosConfig.Bucket,
+                            Region: window.cosConfig.Region,
+                            Key: 'users.json'
+                        }, (err, data) => {
+                            if (err) {
+                                console.log('腾讯云COS暂时不可用，初始化空数据');
+                                users = {};
+                            } else {
+                                try {
+                                    users = JSON.parse(data.Body.toString());
+                                    console.log('用户账号数据已从腾讯云COS加载');
+                                } catch (e) {
+                                    console.log('解析用户账号数据失败，初始化空数据');
+                                    users = {};
+                                }
+                            }
+                            
+                            // 加载globalUserData数据
+                            cos.getObject({
+                                Bucket: window.cosConfig.Bucket,
+                                Region: window.cosConfig.Region,
+                                Key: 'globalUserData.json'
+                            }, (err, data) => {
+                                if (err) {
+                                    console.log('腾讯云COS暂时不可用，初始化空数据');
+                                    globalUserData = {};
+                                } else {
+                                    try {
+                                        globalUserData = JSON.parse(data.Body.toString());
+                                        console.log('用户详细数据已从腾讯云COS加载');
+                                    } catch (e) {
+                                        console.log('解析用户详细数据失败，初始化空数据');
+                                        globalUserData = {};
+                                    }
+                                }
+                                
+                                // 渲染用户列表
+                                renderAllUserRecord();
+                                showTipModal('成功', '数据刷新成功！');
+                            });
+                        });
+                    } else {
+                        // 如果腾讯云COS不可用，初始化空数据
+                        console.log('腾讯云COS不可用，初始化空数据');
+                        users = {};
+                        globalUserData = {};
+                        renderAllUserRecord();
+                        showTipModal('成功', '数据刷新成功！');
+                    }
+                });
+            }
+            
+            // 清空数据
+            if (clearAllDataBtn) {
+                console.log('绑定清空数据按钮事件...');
+                clearAllDataBtn.addEventListener('click', function() {
+                    if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+                        // 重置变量
+                        currentUser = '';
+                        leftCount = 0;
+                        userDrawCount = 0;
+                        recordList = [];
+                        users = {};
+                        usedCodes = [];
+                        globalUserData = {};
+                        userPrizePools = {};
+                        
+                        // 清空Supabase数据
+                        clearTencentCOSData();
+                        
+                        renderAllUserRecord();
+                        showTipModal('成功', '所有数据已清空！');
+                    }
+                });
+            }
+            
+            // 导出数据
+            if (exportBtn) {
+                console.log('绑定导出数据按钮事件...');
+                exportBtn.addEventListener('click', function() {
+                    exportData();
+                });
+            }
+            
+            // 兑换码管理
+            if (codeManageBtn) {
+                console.log('绑定兑换码管理按钮事件...');
+                codeManageBtn.addEventListener('click', function() {
+                    const codeManageModal = document.getElementById('codeManageModal');
+                    if (codeManageModal) {
+                        codeManageModal.classList.add('show');
+                    }
+                });
+            }
+            
+            // 添加中奖记录
+            if (addPrizeBtn) {
+                console.log('绑定添加中奖记录按钮事件...');
+                addPrizeBtn.addEventListener('click', function() {
+                    console.log('点击添加中奖记录按钮');
+                    const addPrizeModal = document.getElementById('addPrizeModal');
+                    if (addPrizeModal) {
+                        // 设置默认时间
+                        const addPrizeTime = document.getElementById('addPrizeTime');
+                        if (addPrizeTime) {
+                            addPrizeTime.value = new Date().toISOString().slice(0, 16);
+                        }
+                        addPrizeModal.classList.add('show');
+                    }
+                });
+            }
+            
+            // 添加中奖记录取消按钮
+            const addPrizeCancel = document.getElementById('addPrizeCancel');
+            if (addPrizeCancel) {
+                addPrizeCancel.addEventListener('click', function() {
+                    console.log('点击添加中奖记录取消按钮');
+                    const addPrizeModal = document.getElementById('addPrizeModal');
+                    if (addPrizeModal) {
+                        addPrizeModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            // 添加中奖记录提交按钮
+            const addPrizeSubmit = document.getElementById('addPrizeSubmit');
+            if (addPrizeSubmit) {
+                addPrizeSubmit.addEventListener('click', function() {
+                    console.log('点击添加中奖记录提交按钮');
+                    addUserPrize();
+                });
+            }
+            
+            // 关闭兑换码管理
+            if (codeManageCancel) {
+                console.log('绑定关闭兑换码管理按钮事件...');
+                codeManageCancel.addEventListener('click', function() {
+                    const codeManageModal = document.getElementById('codeManageModal');
+                    if (codeManageModal) {
+                        codeManageModal.classList.remove('show');
+                    }
+                });
+            }
+            
+            // 生成兑换码
+            if (generateCodeBtn) {
+                console.log('绑定生成兑换码按钮事件...');
+                generateCodeBtn.addEventListener('click', function() {
+                    const times = parseInt(codeDrawTimes.value) || 1;
+                    const count = parseInt(codeGenerateCount.value) || 1;
+                    const codes = [];
+                    const CODE_PASSWORD = 'laide';
+                    
+                    // 生成包含密码的兑换码
+                    function generateRandomCode(times) {
+                        // 生成字符集（大写字母和数字组合）
+                        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                        
+                        // 生成前面的任意字符（3-5位）
+                        let prefix = '';
+                        const prefixLength = Math.floor(Math.random() * 3) + 3; // 3-5位
+                        for (let i = 0; i < prefixLength; i++) {
+                            prefix += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        
+                        // 生成后面的任意字符（3-5位）
+                        let suffix = '';
+                        const suffixLength = Math.floor(Math.random() * 3) + 3; // 3-5位
+                        for (let i = 0; i < suffixLength; i++) {
+                            suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        
+                        // 生成3位防伪符
+                        let antiFake = '';
+                        for (let i = 0; i < 3; i++) {
+                            antiFake += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        
+                        // 组合成兑换码：任意字符+密码+任意字符-次数-防伪符
+                        return `${prefix}${CODE_PASSWORD}${suffix}-${times}-${antiFake}`;
+                    }
+                    
+                    for (let i = 0; i < count; i++) {
+                        const code = generateRandomCode(times);
+                        codes.push(code);
+                        
+                        // 保存兑换码到exchangeCodesData
+                        exchangeCodesData[code] = {
+                            times: times,
+                            used: false,
+                            generatedTime: new Date().toLocaleString()
+                        };
+                    }
+                    
+                    codeResult.textContent = codes.join('\n');
+                    
+                    // 保存兑换码数据到腾讯云COS
+                    saveUsersToTencentCOS();
+                    
+                    showTipModal('成功', `生成了 ${count} 个兑换码！`);
+                });
+            }
+            
+            // 复制兑换码
+            if (copyCodesBtn) {
+                console.log('绑定复制兑换码按钮事件...');
+                copyCodesBtn.addEventListener('click', function() {
+                    navigator.clipboard.writeText(codeResult.textContent).then(function() {
+                        showTipModal('成功', '兑换码已复制到剪贴板！');
+                    }, function() {
+                        showTipModal('错误', '复制失败，请手动复制！');
+                    });
+                });
+            }
+            
+            console.log('事件绑定初始化完成！');
+        }
+        
+        // 加载用户数据
+        function loadUserData() {
+            console.log('开始加载用户数据...');
+            
+            if (currentUser && globalUserData[currentUser]) {
+                // 从全局用户数据中加载
+                leftCount = globalUserData[currentUser].leftCount || 0;
+                recordList = globalUserData[currentUser].recordList || [];
+                userDrawCount = globalUserData[currentUser].userDrawCount || 0;
+                
+                console.log('加载用户数据:', { leftCount, userDrawCount, recordListLength: recordList.length });
+            } else {
+                // 如果用户数据不存在，重置为默认值
+                leftCount = 0;
+                recordList = [];
+                userDrawCount = 0;
+                console.log('用户数据不存在，使用默认值');
+            }
+            
+            console.log('用户数据加载完成！');
+        }
+        
+        // 更新页面显示
+        function updatePageDisplay() {
+            console.log('开始更新页面显示...');
+            
+            if (leftCountSpan) {
+                leftCountSpan.textContent = leftCount;
+            }
+            
+            if (countTip) {
+                if (leftCount > 0) {
+                    countTip.classList.remove('hidden');
+                } else {
+                    countTip.classList.add('hidden');
+                }
+            }
+            
+            if (scratchContainer) {
+                if (leftCount > 0) {
+                    scratchContainer.classList.remove('hidden');
+                    // 重新调整画布尺寸
+                    if (window.resetScratch) {
+                        window.resetScratch();
+                    }
+                } else {
+                    scratchContainer.classList.add('hidden');
+                }
+            }
+            
+            if (recordContainer) {
+                if (recordList.length > 0) {
+                    recordContainer.classList.remove('hidden');
+                    renderUserRecord();
+                } else {
+                    recordContainer.classList.add('hidden');
+                }
+            }
+            
+            console.log('页面显示更新完成！');
+        }
+        
+        // 渲染用户中奖记录
+        function renderUserRecord() {
+            console.log('开始渲染用户中奖记录...');
+            
+            if (recordListEl) {
+                // 计算中奖统计
+                const totalWins = recordList.length;
+                const verifiedCount = recordList.filter(r => r.verified).length;
+                const cashCount = recordList.filter(r => r.prize.includes('现金')).length;
+                const couponCount = recordList.filter(r => r.prize.includes('代金券')).length;
+                const shoeCount = recordList.filter(r => r.prize.includes('鞋子')).length;
+                
+                // 显示统计信息
+                recordListEl.innerHTML = `
+                    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: center;">
+                        <div style="font-weight: bold; margin-bottom: 10px;">中奖统计</div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                            <div>总中奖次数: <span style="color: #17a2b8; font-weight: bold;">${totalWins}</span></div>
+                            <div>已核验次数: <span style="color: #28a745; font-weight: bold;">${verifiedCount}</span></div>
+                            <div>现金红包: <span style="color: #ffc107; font-weight: bold;">${cashCount}</span></div>
+                            <div>代金券: <span style="color: #198754; font-weight: bold;">${couponCount}</span></div>
+                            <div>鞋子: <span style="color: #0d6efd; font-weight: bold;">${shoeCount}</span></div>
+                            <div>未核验: <span style="color: #dc3545; font-weight: bold;">${totalWins - verifiedCount}</span></div>
+                        </div>
+                    </div>
+                `;
+                
+                // 显示中奖记录
+                if (recordList.length === 0) {
+                    recordListEl.innerHTML += '<div style="text-align: center; color: #666; padding: 20px;">暂无中奖记录</div>';
+                } else {
+                    recordList.forEach((record, index) => {
+                        const recordItem = document.createElement('div');
+                        recordItem.className = 'record-item';
+                        recordItem.style.borderLeft = `4px solid ${record.verified ? '#28a745' : '#dc3545'}`;
+                        recordItem.innerHTML = `
+                            <div style="font-weight: bold; margin-bottom: 5px;">第 ${recordList.length - index} 次中奖</div>
+                            <div style="font-size: 16px; margin-bottom: 5px;">🎉 ${record.prize}</div>
+                            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">时间: ${record.time}</div>
+                            <div style="font-size: 14px; ${record.verified ? 'color: #28a745;' : 'color: #dc3545;'}">
+                                ${record.verified ? '✓ 已核验' : '✗ 未核验'}
+                            </div>
+                            <div style="margin-top: 8px; font-size: 12px; color: #999;">
+                                ${getPrizeType(record.prize)}
+                            </div>
+                        `;
+                        recordListEl.appendChild(recordItem);
+                    });
+                }
+            }
+            
+            console.log('用户中奖记录渲染完成！');
+        }
+        
+        // 获取奖品类型
+        function getPrizeType(prize) {
+            if (prize.includes('现金')) {
+                return '类型: 现金红包';
+            } else if (prize.includes('代金券')) {
+                return '类型: 代金券';
+            } else if (prize.includes('鞋子')) {
+                return '类型: 实物奖品';
+            } else {
+                return '类型: 其他奖品';
+            }
+        }
+        
+        // 渲染所有用户记录（管理员后台）
+        function renderAllUserRecord() {
+            console.log('开始渲染所有用户记录...');
+            
+            try {
+                if (userList) {
+                    userList.innerHTML = '';
+                    
+                    // 对用户数据去重
+                    const uniqueUsers = {};
+                    
+                    // 处理全局用户数据
+                    if (globalUserData && typeof globalUserData === 'object') {
+                        Object.keys(globalUserData).forEach(key => {
+                            try {
+                                const userData = globalUserData[key];
+                                if (userData && userData.username) {
+                                    uniqueUsers[userData.username] = userData;
+                                }
+                            } catch (error) {
+                                console.error('处理全局用户数据出错:', error);
+                            }
+                        });
+                    }
+                    
+                    // 同时添加直接以微信号为键的数据
+                    if (users && typeof users === 'object') {
+                        Object.keys(users).forEach(username => {
+                            try {
+                                if (!uniqueUsers[username]) {
+                                    uniqueUsers[username] = {
+                                        leftCount: 0,
+                                        recordList: [],
+                                        userDrawCount: 0,
+                                        prizePools: [],
+                                        username: username
+                                    };
+                                }
+                            } catch (error) {
+                                console.error('处理用户数据出错:', error);
+                            }
+                        });
+                    }
+                    
+                    // 统计数据
+                    const totalUsers = Object.keys(uniqueUsers).length;
+                    let totalDraws = 0;
+                    let totalShoeUsers = 0;
+                    
+                    Object.values(uniqueUsers).forEach(userData => {
+                        try {
+                            totalDraws += userData.userDrawCount || 0;
+                            if (userData.recordList && Array.isArray(userData.recordList)) {
+                                const hasShoe = userData.recordList.some(record => record && record.prize && record.prize.includes('鞋子'));
+                                if (hasShoe) {
+                                    totalShoeUsers++;
+                                }
+                            }
+                        } catch (error) {
+                            console.error('统计用户数据出错:', error);
+                        }
+                    });
+                    
+                    // 更新统计数据
+                    try {
+                        if (totalUserNum) totalUserNum.textContent = totalUsers;
+                        if (totalDrawNum) totalDrawNum.textContent = totalDraws;
+                        if (totalShoeUser) totalShoeUser.textContent = totalShoeUsers;
+                        if (totalUsedCode) totalUsedCode.textContent = usedCodes ? usedCodes.length : 0;
+                    } catch (error) {
+                        console.error('更新统计数据出错:', error);
+                    }
+                    
+                    console.log('统计数据:', { totalUsers, totalDraws, totalShoeUsers, usedCodesLength: usedCodes ? usedCodes.length : 0 });
+                    
+                    // 渲染用户卡片
+                    Object.values(uniqueUsers).forEach(userData => {
+                        try {
+                            const userCard = document.createElement('div');
+                            userCard.className = 'user-card';
+                            
+                            let prizeList = '';
+                            if (userData.recordList && Array.isArray(userData.recordList)) {
+                                prizeList = userData.recordList.map((record, index) => {
+                                    if (!record) return '';
+                                    return `
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="flex: 1;">
+                                                <span>${record.prize || ''}</span>
+                                                <span style="margin-left: 10px;">${record.time || ''}</span>
+                                            </div>
+                                            <div style="display: flex; align-items: center; gap: 10px;">
+                                                ${record.verified ? '<span style="color: #28a745;">✓ 已核验</span>' : '<span style="color: #dc3545;">✗ 未核验</span>'}
+                                                ${!record.verified ? `<button class="btn btn-sm" onclick="verifySinglePrize('${userData.username}', ${index})">核验</button>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('');
+                            }
+                            
+                            // 生成兑换码记录
+                            let usedCodesList = '';
+                            if (userData.usedCodes && Array.isArray(userData.usedCodes) && userData.usedCodes.length > 0) {
+                                usedCodesList = userData.usedCodes.map(code => {
+                                    // 提取兑换码中的次数
+                                    const parts = code.split('-');
+                                    const times = parts.length >= 2 ? parts[1] : '1';
+                                    return `
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span>${code}</span>
+                                            <span>获得 ${times} 次</span>
+                                        </div>
+                                    `;
+                                }).join('');
+                            }
+                            
+                            userCard.innerHTML = `
+                                <h4>
+                                    ${userData.username || '未知用户'}
+                                    <span>剩余次数: ${userData.leftCount || 0}</span>
+                                </h4>
+                                <div class="user-info">
+                                    <div>总抽奖次数: <span>${userData.userDrawCount || 0}</span></div>
+                                    <div>中奖次数: <span>${userData.recordList && Array.isArray(userData.recordList) ? userData.recordList.length : 0}</span></div>
+                                </div>
+                                <div class="prize-detail">
+                                    <h5>中奖记录</h5>
+                                    <div class="user-prize-list">
+                                        ${prizeList || '<div>暂无中奖记录</div>'}
+                                    </div>
+                                </div>
+                                <div class="prize-detail" style="margin-top: 15px;">
+                                    <h5>兑换码记录</h5>
+                                    <div class="user-prize-list">
+                                        ${usedCodesList || '<div>暂无兑换码记录</div>'}
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                    <button class="btn btn-sm" onclick="addDrawTimes('${userData.username || ''}')">充值次数</button>
+                                    <button class="btn btn-sm btn-info" onclick="verifyUserPrizes('${userData.username || ''}')">核验奖品</button>
+                                    <button class="btn btn-sm btn-danger" onclick="resetUserPassword('${userData.username || ''}')">重置密码</button>
+                                </div>
+                            `;
+                            
+                            userList.appendChild(userCard);
+                        } catch (error) {
+                            console.error('渲染用户卡片出错:', error);
+                        }
+                    });
+                }
+                
+                console.log('所有用户记录渲染完成！');
+            } catch (error) {
+                console.error('渲染管理页面出错:', error);
+                // 显示错误信息，避免白屏
+                if (userList) {
+                    userList.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc3545;">渲染出错，请刷新页面重试<br>错误: ${error.message}</div>`;
+                }
+            }
+        }
+        
+        // 充值抽奖次数
+        window.addDrawTimes = function(username) {
+            console.log('开始充值抽奖次数:', username);
+            
+            const times = prompt('请输入要充值的抽奖次数:', '1');
+            const numTimes = parseInt(times);
+            
+            if (numTimes > 0) {
+                if (globalUserData[username]) {
+                    globalUserData[username].leftCount = (globalUserData[username].leftCount || 0) + numTimes;
+                } else {
+                    globalUserData[username] = {
+                        leftCount: numTimes,
+                        recordList: [],
+                        userDrawCount: 0,
+                        prizePools: [],
+                        username: username
+                    };
+                }
+                
+                // 保存到腾讯云COS
+                saveUsersToTencentCOS();
+                
+                renderAllUserRecord();
+                showTipModal('成功', `已为用户 ${username} 充值 ${numTimes} 次抽奖机会！`);
+            }
+            
+            console.log('充值抽奖次数完成！');
+        };
+        
+        // 核验用户奖品（单个）
+        window.verifySinglePrize = function(username, index) {
+            console.log('开始核验单个奖品:', username, index);
+            
+            if (globalUserData[username] && globalUserData[username].recordList && globalUserData[username].recordList[index]) {
+                globalUserData[username].recordList[index].verified = true;
+                
+                // 保存到腾讯云COS
+                saveUsersToTencentCOS();
+                
+                // 同步到当前用户数据
+                if (currentUser === username) {
+                    recordList = globalUserData[username].recordList;
+                }
+                
+                renderAllUserRecord();
+                showTipModal('成功', `已核验该奖品！`);
+            }
+            
+            console.log('单个奖品核验完成！');
+        };
+        
+        // 核验用户奖品（全部）
+        window.verifyUserPrizes = function(username) {
+            console.log('开始核验用户所有奖品:', username);
+            
+            if (globalUserData[username] && globalUserData[username].recordList) {
+                globalUserData[username].recordList.forEach(record => {
+                    record.verified = true;
+                });
+                
+                // 保存到Supabase
+                saveUsersToTencentCOS();
+                
+                // 同步到当前用户数据
+                if (currentUser === username) {
+                    recordList = globalUserData[username].recordList;
+                }
+                
+                renderAllUserRecord();
+                showTipModal('成功', `已核验用户 ${username} 的所有奖品！`);
+            }
+            
+            console.log('用户所有奖品核验完成！');
+        };
+        
+        // 重置用户密码
+        window.resetUserPassword = function(username) {
+            console.log('开始重置用户密码:', username);
+            
+            if (!username) {
+                showTipModal('错误', '用户名不能为空！');
+                return;
+            }
+            
+            if (!users[username]) {
+                showTipModal('错误', '该用户不存在！');
+                return;
+            }
+            
+            const newPassword = prompt('请输入为用户 "' + username + '" 设置的新密码:', '');
+            
+            if (!newPassword) {
+                return; // 用户取消输入
+            }
+            
+            if (newPassword.length < 6) {
+                showTipModal('错误', '密码长度不能少于6位！');
+                return;
+            }
+            
+            // 重置密码
+            users[username] = newPassword;
+            
+            // 保存到腾讯云COS
+            saveUsersToTencentCOS();
+            
+            showTipModal('成功', `用户 "${username}" 的密码重置成功！`);
+            
+            console.log('用户密码重置完成:', username);
+        };
+        
+        // 生成CSV格式数据
+        function generateCSVData() {
+            console.log('开始生成CSV数据...');
+            
+            // CSV表头
+            let csvContent = '用户名,剩余抽奖次数,总抽奖次数,中奖次数,最后登录时间,最后登录IP,注册时间,注册IP\n';
+            
+            // 处理所有用户数据
+            Object.keys(globalUserData).forEach(username => {
+                const userData = globalUserData[username];
+                const leftCount = userData.leftCount || 0;
+                const userDrawCount = userData.userDrawCount || 0;
+                const recordCount = userData.recordList ? userData.recordList.length : 0;
+                const lastLoginTime = userData.lastLoginTime || '未知';
+                const lastLoginIP = userData.lastLoginIP || '未知';
+                const registerTime = userData.registerTime || '未知';
+                const registerIP = userData.registerIP || '未知';
+                
+                // 添加用户数据行
+                csvContent += `"${username}",${leftCount},${userDrawCount},${recordCount},"${lastLoginTime}","${lastLoginIP}","${registerTime}","${registerIP}"\n`;
+            });
+            
+            // 添加中奖记录
+            csvContent += '\n=== 中奖记录 ===\n';
+            csvContent += '用户名,奖品,时间,核验状态\n';
+            
+            Object.keys(globalUserData).forEach(username => {
+                const userData = globalUserData[username];
+                if (userData.recordList && userData.recordList.length > 0) {
+                    userData.recordList.forEach(record => {
+                        const prize = record.prize || '';
+                        const time = record.time || '';
+                        const verified = record.verified ? '已核验' : '未核验';
+                        
+                        // 添加中奖记录行
+                        csvContent += `"${username}","${prize}","${time}","${verified}"\n`;
+                    });
+                }
+            });
+            
+            console.log('CSV数据生成完成！');
+            return csvContent;
+        }
+        
+        // 导出数据
+        function exportData() {
+            console.log('开始导出数据...');
+            
+            // 显示导出选项
+            const exportOption = confirm('请选择导出格式：\n确定 - CSV格式（Excel可打开）\n取消 - JSON格式（原始数据）');
+            
+            if (exportOption) {
+                // 导出CSV格式
+                const csvContent = generateCSVData();
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `刮刮乐数据_${new Date().toISOString().slice(0,10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                console.log('CSV数据导出完成！');
+                showTipModal('成功', 'CSV数据导出完成！');
+            } else {
+                // 导出JSON格式
+                const data = {
+                    users: users,
+                    globalUserData: globalUserData,
+                    usedCodes: usedCodes
+                };
+                
+                const jsonStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `刮刮乐数据_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                console.log('JSON数据导出完成！');
+                showTipModal('成功', 'JSON数据导出完成！');
+            }
+        }
+        
+        // 添加用户中奖记录
+        function addUserPrize() {
+            console.log('开始添加用户中奖记录...');
+            
+            const addPrizeUsername = document.getElementById('addPrizeUsername');
+            const addPrizeType = document.getElementById('addPrizeType');
+            const addPrizeTime = document.getElementById('addPrizeTime');
+            const addPrizeVerified = document.getElementById('addPrizeVerified');
+            
+            const username = addPrizeUsername.value.trim();
+            const prize = addPrizeType.value;
+            const time = addPrizeTime.value;
+            const verified = addPrizeVerified.value === 'true';
+            
+            // 验证输入
+            if (!username) {
+                showTipModal('错误', '请输入用户名！');
+                return;
+            }
+            
+            if (!prize) {
+                showTipModal('错误', '请选择奖品！');
+                return;
+            }
+            
+            if (!time) {
+                showTipModal('错误', '请选择时间！');
+                return;
+            }
+            
+            // 验证用户是否存在
+            if (!users[username]) {
+                showTipModal('错误', '用户不存在！');
+                return;
+            }
+            
+            // 确保用户数据存在
+            if (!globalUserData[username]) {
+                globalUserData[username] = {
+                    leftCount: 0,
+                    recordList: [],
+                    userDrawCount: 0,
+                    prizePools: [],
+                    usedCodes: [],
+                    lastLoginTime: new Date().toLocaleString()
+                };
+            }
+            
+            // 添加中奖记录
+            const record = {
+                prize: prize,
+                time: new Date(time).toLocaleString(),
+                verified: verified
+            };
+            
+            globalUserData[username].recordList.unshift(record);
+            globalUserData[username].userDrawCount++;
+            
+            // 保存数据
+            saveUsersToTencentCOS();
+            
+            // 显示成功提示
+            showTipModal('成功', `已成功为用户 ${username} 添加中奖记录！`);
+            
+            // 关闭模态框
+            const addPrizeModal = document.getElementById('addPrizeModal');
+            if (addPrizeModal) {
+                addPrizeModal.classList.remove('show');
+            }
+            
+            // 清空输入
+            addPrizeUsername.value = '';
+            addPrizeTime.value = '';
+            
+            // 刷新管理员后台的用户列表
+            renderAllUserRecord();
+            
+            console.log('用户中奖记录添加完成！');
+        }
+        
+        // 生成随机奖品
+        function getRandomPrize() {
+            console.log('开始生成随机奖品，当前总抽奖次数:', userDrawCount + 1);
+            
+            // 实现周期逻辑：每10次抽奖为一个周期
+            const cycleCount = (userDrawCount % 10);
+            console.log('当前周期内抽奖次数:', cycleCount + 1);
+            
+            // 第一次抽奖（周期内）：肯定是8.8元现金红包
+            if (cycleCount === 0) {
+                console.log('周期内第一次抽奖，必中8.8元现金红包');
+                return PRIZES.cash88;
+            }
+            
+            // 第10次抽奖（周期内）：保底出鞋子
+            if (cycleCount === 9) {
+                console.log('周期内第10次抽奖，保底出鞋子');
+                return PRIZES.shoe;
+            }
+            
+            // 第2-9次抽奖（周期内）：随机出现两次6.6元，其余是20和25元代金券
+            if (cycleCount >= 1 && cycleCount <= 8) {
+                console.log('周期内第2-9次抽奖，随机生成奖品');
+                
+                // 计算当前周期的起始索引
+                const cycleStartIndex = Math.floor(userDrawCount / 10) * 10;
+                console.log('当前周期起始索引:', cycleStartIndex);
+                
+                // 检查当前周期内是否已经中过6.6元
+                let sixSixCount = 0;
+                if (recordList && Array.isArray(recordList)) {
+                    // 只检查当前周期内的中奖记录
+                    const currentCycleRecords = recordList.slice(cycleStartIndex);
+                    sixSixCount = currentCycleRecords.filter(record => record && record.prize === PRIZES.cash66).length;
+                }
+                
+                console.log('当前周期内已中6.6元次数:', sixSixCount);
+                
+                // 如果还没中过两次6.6元，有50%概率中6.6元（提高概率确保能中两次）
+                if (sixSixCount < 2 && Math.random() < 0.5) {
+                    console.log('随机中6.6元现金红包');
+                    return PRIZES.cash66;
+                } else {
+                    // 否则随机中20或25元代金券（各50%概率）
+                    const couponType = Math.random() < 0.5 ? PRIZES.coupon20 : PRIZES.coupon25;
+                    console.log('随机中代金券:', couponType);
+                    return couponType;
+                }
+            }
+            
+            // 默认返回一个奖品
+            console.log('默认中奖结果:', PRIZES.coupon20);
+            return PRIZES.coupon20;
+        }
+        
+        // 保存用户数据
+        function saveUserData() {
+            console.log('开始保存用户数据...');
+            
+            if (currentUser) {
+                // 更新全局用户数据
+                if (!globalUserData[currentUser]) {
+                    globalUserData[currentUser] = {
+                        leftCount: 0,
+                        recordList: [],
+                        userDrawCount: 0,
+                        prizePools: [],
+                        usedCodes: [],
+                        username: currentUser
+                    };
+                }
+                globalUserData[currentUser].leftCount = leftCount;
+                globalUserData[currentUser].recordList = recordList;
+                globalUserData[currentUser].userDrawCount = userDrawCount;
+                // 确保usedCodes字段存在
+                if (!globalUserData[currentUser].usedCodes) {
+                    globalUserData[currentUser].usedCodes = [];
+                }
+                
+                // 直接保存到本地存储
+                localStorage.setItem('lottery_users', JSON.stringify(users));
+                localStorage.setItem('lottery_globalUserData', JSON.stringify(globalUserData));
+                console.log('数据已保存到本地存储');
+                
+                // 尝试保存到腾讯云COS
+                if (window.COS && window.cosConfig) {
+                    try {
+                        const cos = new COS({
+                            SecretId: window.cosConfig.SecretId,
+                            SecretKey: window.cosConfig.SecretKey
+                        });
+                        
+                        // 保存users数据
+                        cos.putObject({
+                            Bucket: window.cosConfig.Bucket,
+                            Region: window.cosConfig.Region,
+                            Key: 'users.json',
+                            Body: JSON.stringify(users)
+                        }, (err, data) => {
+                            if (err) {
+                                console.log('腾讯云COS暂时不可用，数据已保存到本地存储');
+                            } else {
+                                console.log('保存用户账号数据到腾讯云COS成功');
+                            }
+                        });
+                        
+                        // 保存globalUserData数据
+                        cos.putObject({
+                            Bucket: window.cosConfig.Bucket,
+                            Region: window.cosConfig.Region,
+                            Key: 'globalUserData.json',
+                            Body: JSON.stringify(globalUserData)
+                        }, (err, data) => {
+                            if (err) {
+                                console.log('腾讯云COS暂时不可用，数据已保存到本地存储');
+                            } else {
+                                console.log('保存用户详细数据到腾讯云COS成功');
+                            }
+                        });
+                    } catch (error) {
+                        console.log('腾讯云COS暂时不可用，数据已保存到本地存储');
+                    }
+                } else {
+                    console.log('腾讯云COS SDK未加载或配置未设置，数据已保存到本地存储');
+                }
+                
+                console.log('用户数据保存完成:', { leftCount, userDrawCount, recordListLength: recordList.length });
+            }
+        }
+        
+        // 从腾讯云COS加载所有数据
+        function loadAllDataFromTencentCOS() {
+            console.log('开始从腾讯云COS加载所有数据...');
+            
+            // 直接从腾讯云COS加载数据，确保跨设备数据同步
+            if (window.COS && window.cosConfig) {
+                try {
+                    const cos = new COS({
+                        SecretId: window.cosConfig.SecretId,
+                        SecretKey: window.cosConfig.SecretKey,
+                        // 禁用SDK内部的健康检查，减少404错误
+                        ClientConfig: {
+                            DisableHealthCheck: true
+                        }
+                    });
+                    
+                    // 加载users数据
+                    cos.getObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'users.json'
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('腾讯云COS暂时不可用，初始化空数据');
+                            users = {};
+                        } else {
+                            try {
+                                users = JSON.parse(data.Body.toString());
+                                console.log('用户账号数据已从腾讯云COS加载');
+                            } catch (e) {
+                                console.log('解析用户账号数据失败，初始化空数据');
+                                users = {};
+                            }
+                        }
+                        
+                        // 加载globalUserData数据
+                        cos.getObject({
+                            Bucket: window.cosConfig.Bucket,
+                            Region: window.cosConfig.Region,
+                            Key: 'globalUserData.json'
+                        }, (err, data) => {
+                            if (err) {
+                                console.log('腾讯云COS暂时不可用，初始化空数据');
+                                globalUserData = {};
+                            } else {
+                                try {
+                                    globalUserData = JSON.parse(data.Body.toString());
+                                    console.log('用户详细数据已从腾讯云COS加载');
+                                } catch (e) {
+                                    console.log('解析用户详细数据失败，初始化空数据');
+                                    globalUserData = {};
+                                }
+                            }
+                            
+                            // 加载exchangeCodesData数据
+                            cos.getObject({
+                                Bucket: window.cosConfig.Bucket,
+                                Region: window.cosConfig.Region,
+                                Key: 'exchangeCodesData.json'
+                            }, (err, data) => {
+                                if (err) {
+                                    console.log('腾讯云COS暂时不可用，初始化空数据');
+                                    exchangeCodesData = {};
+                                } else {
+                                    try {
+                                        exchangeCodesData = JSON.parse(data.Body.toString());
+                                        console.log('兑换码数据已从腾讯云COS加载');
+                                    } catch (e) {
+                                        console.log('解析兑换码数据失败，初始化空数据');
+                                        exchangeCodesData = {};
+                                    }
+                                }
+                                
+                                console.log('从腾讯云COS加载数据完成:', { 
+                                    users: Object.keys(users).length, 
+                                    globalUserData: Object.keys(globalUserData).length,
+                                    exchangeCodesData: Object.keys(exchangeCodesData).length 
+                                });
+                            });
+                        });
+                    });
+                } catch (error) {
+                    console.log('腾讯云COS暂时不可用，初始化空数据');
+                    users = {};
+                    globalUserData = {};
+                    console.log('初始化空数据:', { users: Object.keys(users).length, globalUserData: Object.keys(globalUserData).length });
+                }
+            } else {
+                console.log('腾讯云COS SDK未加载或配置未设置，初始化空数据');
+                users = {};
+                globalUserData = {};
+                console.log('初始化空数据:', { users: Object.keys(users).length, globalUserData: Object.keys(globalUserData).length });
+            }
+        }
+        
+        // 保存用户数据到腾讯云COS
+        function saveUsersToTencentCOS() {
+            console.log('开始保存用户数据到腾讯云COS...');
+            console.log('准备保存的数据:', { users: Object.keys(users).length, globalUserData: Object.keys(globalUserData).length });
+            
+            // 直接保存到腾讯云COS，确保跨设备数据同步
+            if (window.COS && window.cosConfig) {
+                try {
+                    const cos = new COS({
+                        SecretId: window.cosConfig.SecretId,
+                        SecretKey: window.cosConfig.SecretKey,
+                        // 禁用SDK内部的健康检查，减少404错误
+                        ClientConfig: {
+                            DisableHealthCheck: true
+                        }
+                    });
+                    
+                    // 保存users数据
+                    cos.putObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'users.json',
+                        Body: JSON.stringify(users)
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('保存用户账号数据到腾讯云COS失败:', err);
+                        } else {
+                            console.log('保存用户账号数据到腾讯云COS成功');
+                        }
+                    });
+                    
+                    // 保存globalUserData数据
+                    cos.putObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'globalUserData.json',
+                        Body: JSON.stringify(globalUserData)
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('保存用户详细数据到腾讯云COS失败:', err);
+                        } else {
+                            console.log('保存用户详细数据到腾讯云COS成功');
+                        }
+                    });
+                    
+                    // 保存exchangeCodesData数据
+                    cos.putObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'exchangeCodesData.json',
+                        Body: JSON.stringify(exchangeCodesData)
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('保存兑换码数据到腾讯云COS失败:', err);
+                        } else {
+                            console.log('保存兑换码数据到腾讯云COS成功');
+                            console.log('用户数据已成功同步到腾讯云COS');
+                        }
+                    });
+                } catch (error) {
+                    console.log('保存用户数据到腾讯云COS失败:', error);
+                }
+            } else {
+                console.log('腾讯云COS SDK未加载或配置未设置');
+            }
+            
+            console.log('保存用户数据完成！');
+        }
+        
+        // 清空腾讯云COS数据
+        function clearTencentCOSData() {
+            console.log('开始清空数据...');
+            
+            // 首先清空本地存储
+            localStorage.removeItem('lottery_users');
+            localStorage.removeItem('lottery_globalUserData');
+            console.log('本地存储数据已清空');
+            
+            // 检测是否从本地文件系统打开（使用更可靠的方法）
+            const isLocalFileSystem = window.location.protocol === 'file:' || window.location.origin === 'null';
+            if (isLocalFileSystem) {
+                console.log('从本地文件系统打开，本地数据已清空');
+                console.log('清空数据完成！');
+                return;
+            }
+            
+            // 尝试清空腾讯云COS数据
+            if (window.COS && window.cosConfig) {
+                try {
+                    const cos = new COS({
+                        SecretId: window.cosConfig.SecretId,
+                        SecretKey: window.cosConfig.SecretKey,
+                        // 禁用SDK内部的健康检查，减少404错误
+                        ClientConfig: {
+                            DisableHealthCheck: true
+                        }
+                    });
+                    
+                    // 删除users数据
+                    cos.deleteObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'users.json'
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('腾讯云COS暂时不可用，本地数据已清空');
+                        } else {
+                            console.log('删除用户账号数据成功');
+                        }
+                    });
+                    
+                    // 删除globalUserData数据
+                    cos.deleteObject({
+                        Bucket: window.cosConfig.Bucket,
+                        Region: window.cosConfig.Region,
+                        Key: 'globalUserData.json'
+                    }, (err, data) => {
+                        if (err) {
+                            console.log('腾讯云COS暂时不可用，本地数据已清空');
+                        } else {
+                            console.log('删除用户详细数据成功');
+                            console.log('腾讯云COS数据清空成功');
+                        }
+                    });
+                } catch (error) {
+                    console.log('腾讯云COS暂时不可用，本地数据已清空');
+                }
+            } else {
+                console.log('腾讯云COS SDK未加载或配置未设置，本地数据已清空');
+            }
+            
+            console.log('清空数据完成！');
+        }
+        
+        // 初始化页面
+        function initPage() {
+            console.log('开始初始化页面...');
+            
+            if (currentUser) {
+                // 显示用户页
+                if (authPage) authPage.classList.add('hidden');
+                if (userPage) userPage.classList.remove('hidden');
+                if (adminPage) adminPage.style.display = 'none';
+                
+                // 更新用户信息
+                if (currentUserEl) {
+                    currentUserEl.textContent = `欢迎，${currentUser}`;
+                }
+                
+                // 加载用户数据
+                loadUserData();
+                
+                // 更新页面显示
+                updatePageDisplay();
+            } else {
+                // 显示登录页
+                if (authPage) authPage.classList.remove('hidden');
+                if (userPage) userPage.classList.add('hidden');
+                if (adminPage) adminPage.style.display = 'none';
+            }
+            
+            console.log('页面初始化完成！');
+        }
+        
+        // 初始化所有功能
+        function init() {
+            console.log('开始初始化系统...');
+            
+            // 获取DOM元素
+            getDOMElements();
+            
+            // 从腾讯云COS加载所有数据
+            loadAllDataFromTencentCOS();
+            
+            // 初始化概率配置
+            loadProbabilityConfig();
+            
+            // 初始化验证码
+            initCaptcha();
+            
+            // 初始化密码重置
+            initPasswordReset();
+            
+            // 初始化滚动播报
+            initTicker();
+            
+            // 初始化概率配置事件
+            initProbabilityConfig();
+            
+            // 初始化刮刮乐
+            initScratch();
+            
+            // 初始化事件绑定（最后调用，确保所有元素都已初始化）
+            bindEvents();
+            
+            // 初始化页面
+            initPage();
+            
+            console.log('系统初始化完成！');
+        }
+        
+        // 执行初始化
+        init();
+        
+        // 监听概率输入变化
+        const probabilityInputs = document.querySelectorAll('#probabilityForm input[type="number"]');
+        probabilityInputs.forEach(input => {
+            input.addEventListener('input', calculateTotalProbability);
+        });
+        
+    });
+    </script>
+</body>
+</html>
